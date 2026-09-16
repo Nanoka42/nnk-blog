@@ -1,36 +1,37 @@
-# OSS + CDN 部署审查与首次发布清单
+# 日常发布与运维清单
 
-更新：2026-09-16。适用仓库：`Nanoka42/nnk-blog`，生产域名：`https://nanoka.tv`。
+更新：2026-09-17。仓库：`Nanoka42/nnk-blog`；网站：<https://nanoka.tv>。
 
-本文区分三种证据：用户提供的控制台/工作流记录、工作区代码检查、只读公网实测。助手没有登录阿里云控制台修改配置，也没有代为提交、推送或触发生产部署；用户自行执行的结果按后续进展记录。最初部署计划中的“尚未修复锁文件”是历史状态，不应继续当作当前结论。
+用户已确认 OIDC、实际上传、OSS 源站和 CDN 验收全部通过，网站与游戏正常访问。当前进入日常维护阶段；初次接入时的排错过程保留在 Git 历史中。基础配置见 [部署指南](DEPLOYMENT_GUIDE.md)，构建概念见 [构建与部署说明](BUILD_AND_DEPLOY_EXPLAINED.md)。
 
-**最新状态（同日 23:35–23:37）：** 用户确认修正 RAM 权限策略后，取消 dry-run 的部署轮次已成功。源站 GET 复核也已确认首页、文章列表、目录跳转及自定义 404 正常。此前 403、空桶 404 和首次写入失败的记录保留为历史；当前状态以本段和第 9 节为准。CDN 正式域名需要独立验收。
+## 1. 发布方式
 
-**CDN 后续状态（同日 23:58）：** 用户已配置根域 CNAME，截图显示 CDN 正常运行但 HTTPS 未开启。实测 `http://nanoka.tv/` 为 200，`https://nanoka.tv/` TLS 握手失败，OSS 直连 HTTPS 为 200。因此当前 CDN 验收的阻塞是边缘 HTTPS 尚未启用；修复顺序及海外访问说明见第 10 节。
+工作流仍名为 **Check and build**，位于 [.github/workflows/ci.yml](../.github/workflows/ci.yml)。
 
-**后续进展（同日）：** 用户确认 RAM 信任策略的两处错误仅为笔记错误，已开启 Bucket 公共读，GitHub dry-run 已成功。真实上传首批 9 个文件全部失败；用户随后提供的实际 `NanokaBlogDeployOSS` 权限策略中仍保留 `<BUCKET_NAME>`，因此未授权目标桶。应按下方实际桶名修正 Resource、保存为生效默认版本，并确认策略绑定 `nanoka-blog-deployer`。后续匿名 GET 已从 403 变成 `404 NoSuchKey`，符合首页尚未成功上传的状态；这不代表真实上传或整站验收已通过。
-
-## 1. 已修正的工作流
-
-对应文件：[ci.yml](../.github/workflows/ci.yml)、[上传脚本](../scripts/deploy-oss.sh)、[部署前检查](../scripts/check-deployment.mjs)、[线上验收](../scripts/verify-deployment.mjs)。
-
-| 原配置问题 | 当前实现 |
+| 触发方式 | 行为 |
 | --- | --- |
-| `ossutil --version` 会报 unknown flag，安装步骤直接失败 | 改成实际支持的 `ossutil version` |
-| 全站混合上传，之后重复上传 `_astro`；新 HTML 可能先于依赖资源可见 | 按 `_astro` → 固定资源 → RSS/sitemap/robots → HTML 上传；任何阶段失败就停止 |
-| RSS/sitemap/robots 与约定的浏览器缓存不一致 | 这些文件使用 300 秒，HTML/固定资源 60 秒，哈希资源 31536000 秒 + immutable |
-| 只检查两个文件；`find \| sort \| head` 在 pipefail 下有 SIGPIPE 风险 | 检查主要路由、游戏资源、配置、生产域名、noindex；保存完整 SHA256 清单 |
-| 只用 `curl -f` 读源站首页，3xx/旧内容等可能蒙混过关 | 对照本次 artifact 验收正文、HTTP 状态、MIME、缓存头、目录跳转和真实 404 |
-| 尚无预演入口和 push 自动发布路径 | 手动默认 dry-run；验收后用 Repository Variable `AUTO_DEPLOY=true` 开启 main 自动发布 |
-| 重跑过时工作流可能覆盖新版本 | 拿到部署并发锁后核对当前 main SHA，不允许重跑旧版本发布 |
+| Pull Request | 检查、测试、构建，不部署 |
+| push / merge main，`AUTO_DEPLOY=true` | 检查通过后自动发布，并验证 OSS 与 CDN |
+| push / merge main，`AUTO_DEPLOY` 未设置或为 `false` | 只检查、测试、构建 |
+| Run workflow → main，保留 `dry_run=true` | 检查配置、获取临时凭证并预演上传；不修改 OSS，也不执行线上验收 |
+| Run workflow → main，取消 `dry_run` | 实际发布，并验证 OSS 与 CDN |
 
-保留原本正确的部分：同一运行的 `dist-${{ github.sha }}`、`needs: validate`、production 环境、最小 job 权限、固定阿里云 action SHA、ossutil 2.4.0 下载校验和、STS 三项环境变量映射、CNAME 寻址、不取消正在运行的 main 发布、不删除 OSS 对象。
+首次接入用的 `verify_cdn` 开关已移除。每次真实发布都必须通过源站和 CDN 验收；预演不会被误当成已上线。
 
-`dist/` 的内容直接上传到桶根，不会多出 `dist/` 前缀。CLI 会根据文件扩展名推断资源 MIME；为避免系统 MIME 数据库差异，字体明确设置 `font/woff2`、`font/woff`、`font/ttf`，HTML 明确设置 `text/html; charset=utf-8` 和 `Content-Disposition: inline`。过滤规则按 ossutil **2.x** 语义实现并实测；不要套用 1.x 说明。[官方上传命令](https://help.aliyun.com/zh/oss/developer-reference/cp-upload-file)、[过滤规则](https://help.aliyun.com/zh/oss/developer-reference/advanced-commands/)、[工具与环境变量](https://help.aliyun.com/zh/oss/developer-reference/ossutil-overview/)
+日常写作通常只需修改文章/素材、按需本地预览、提交并推送 main，然后查看 Actions 结果。若希望每次推送自动发布，确认 Repository Variable `AUTO_DEPLOY` 为字符串 `true`。它可随时设为 `false` 暂停后续 push 的自动发布，不会撤销已经开始的部署，也不会关闭线上网站；手动发布入口仍可使用。
 
-## 2. Variables：现有六项可以保留
+## 2. 长期保留的配置
 
-| production Environment Variable | 当前值 |
+### Repository Variables
+
+| 变量 | 值 / 用途 |
+| --- | --- |
+| `SITE_URL` | `https://nanoka.tv`；构建阶段生成 canonical、RSS 与 sitemap |
+| `AUTO_DEPLOY` | `true` 开启 main 自动发布；`false` 或未设置时暂停 |
+
+### production Environment Variables
+
+| 变量 | 值 |
 | --- | --- |
 | `OSS_BUCKET` | `nanoka-blog-prod-2026` |
 | `OSS_REGION` | `cn-shanghai` |
@@ -39,218 +40,87 @@
 | `ALIBABA_DEPLOY_ROLE_ARN` | `acs:ram::1559403763150419:role/nanoka-blog-deployer` |
 | `CDN_DOMAIN` | `nanoka.tv` |
 
-另外两项放在 **Settings → Secrets and variables → Actions → Variables，即 Repository Variables**：
+这些变量都仍被使用，保留即可。`SITE_URL` 和 `AUTO_DEPLOY` 要放在 Repository Variables。CNAME 寻址已固定在上传脚本中，无需另设 `OSS_USE_CNAME` 或 `OSS_ADDRESSING_STYLE`。
 
-| 变量 | 设置方式 |
+production 环境继续限制 **Selected branches and tags → Branch → main**。凭证由 GitHub OIDC 换取 STS 临时凭证，不需要长期 AccessKey Secret。当前角色只需目标桶的 ListObjects 和目标对象的 PutObject / GetObject；不授予自动删除权限。权限策略中的资源范围是 `acs:oss:*:*:nanoka-blog-prod-2026` 及 `acs:oss:*:*:nanoka-blog-prod-2026/*`。
+
+域名、CNAME、HTTPS 证书、CDN 回源 Host/SNI、RAM Provider/Role 都是运行依赖。DNS 中证书/域名验证记录的保留或移除，应按对应服务的续期要求处理；本次代码清理没有改动云端配置。
+
+## 3. 发布流程与脚本职责
+
+```text
+检查 / 测试 / 生产构建 / 浏览器测试
+  → 保存 dist-SHA，确认当前提交仍为 main 最新版本
+  → 下载同一次运行的产物并检查配置与内容
+  → 获取 STS 临时凭证
+  → 哈希资源 → 固定资源 → RSS/sitemap/robots → HTML
+  → 验证 OSS → 等待短缓存更新并验证 CDN
+```
+
+| 文件 | 保留原因 |
 | --- | --- |
-| `SITE_URL` | `https://nanoka.tv`。validate 构建阶段就需要；不要仅放 production 环境 |
-| `AUTO_DEPLOY` | 首次验收前不设置或设为 `false`；全部验收后改为字符串 `true` |
+| [check-deployment.mjs](../scripts/check-deployment.mjs) | 上传前核对参数、必要产物、生产 canonical 与 noindex，拒绝异常发布 |
+| [deploy-oss.sh](../scripts/deploy-oss.sh) | 分阶段上传、设置 MIME 与缓存；支持预演 |
+| [verify-deployment.mjs](../scripts/verify-deployment.mjs) | GET 验证实际内容、状态、目录跳转、404、MIME 和缓存；显示 TLS/DNS 等底层错误码 |
+| [report-oss-errors.mjs](../scripts/report-oss-errors.mjs) | 仅上传失败时输出并归档脱敏报告，防止 runner 结束后丢失错误详情 |
 
-`AUTO_DEPLOY` 用于 job 是否启动的判断，不能仅放 production Environment Variables。部署脚本已固定 CNAME 模式，不需要新增 `OSS_USE_CNAME` 或 `OSS_ADDRESSING_STYLE`。[GitHub 变量与求值时机](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-variables)
+相应测试验证失败检测、超时和脱敏行为，也继续保留。一次性 OIDC claims 诊断 job 已不存在。
 
-## 3. RAM 信任策略：核对记录中的两处笔误
+部署按 production 串行，不取消正在运行的 main 发布。上传前会检查 main SHA，拒绝部署已经落后的提交；遇到过时提交提示时，发起新的 Run workflow → main。
 
-记录中出现了 `oidc:iss = https://token.actions.githubusercontent.com/` 和 `str:AssumeRole`。若控制台实际也是这样，需修改；如果仅是记录笔误则不必重复操作。
+## 4. 缓存与发布结果
 
-- issuer **没有尾斜杠**，`StringEquals` 必须精确匹配。
-- 信任策略 Action 是 **`sts:AssumeRole`**；交换 token 的 API 名称才是 AssumeRoleWithOIDC。
-- subject 中的 `@307284785` 与 `@1372837185` 是新版不可变 ID 格式，不能按旧教程删除。具体值须与此前 production 诊断日志一致。
-
-供核对的完整策略：
-
-```json
-{
-  "Version": "1",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "acs:ram::1559403763150419:oidc-provider/github-actions"
-      },
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {
-          "oidc:iss": "https://token.actions.githubusercontent.com",
-          "oidc:aud": "sts.aliyuncs.com",
-          "oidc:sub": "repo:Nanoka42@307284785/nnk-blog@1372837185:environment:production"
-        }
-      }
-    }
-  ]
-}
-```
-
-Environment 的 subject 不包含 main，所以 production 的 **Selected branches and tags → Branch → main** 必须保留；不额外开放同名 tag。[GitHub OIDC](https://docs.github.com/en/actions/reference/security/oidc)、[新版 subject 公告](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/)、[RAM 信任策略](https://help.aliyun.com/en/ram/user-guide/create-a-ram-role-for-a-trusted-idp)
-
-现有 `oss:ListObjects`、`oss:PutObject`、`oss:GetObject` 可继续用于当前小文件部署。脚本在发布前拒绝单文件达到 100 MiB 的产物，避免将来无意触发分片上传所需的额外权限；确实需要大文件时再审核 ListParts / AbortMultipartUpload。无需改成 OSS FullAccess，也无需增加 DeleteObject。
-
-`NanokaBlogDeployOSS` 的实际权限策略应为以下内容，**不要保留 `<BUCKET_NAME>` 占位符**：
-
-```json
-{
-  "Version": "1",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "oss:ListObjects",
-      "Resource": "acs:oss:*:*:nanoka-blog-prod-2026"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["oss:PutObject", "oss:GetObject"],
-      "Resource": "acs:oss:*:*:nanoka-blog-prod-2026/*"
-    }
-  ]
-}
-```
-
-OIDC 允许获得角色临时凭证；上述权限策略决定角色可以对哪些 OSS 对象执行操作；Bucket 公共读允许匿名读取。这三者分别生效，dry-run 成功不能证明 PutObject 已获授权。
-
-## 4. 公网实测：还不能认定只剩 CI
-
-检查时间：**2026-09-16 22:51–22:53（北京时间）**。DNS 使用 Google DNS over HTTPS 查询；TLS/GET 使用 Python 标准库并校验证书。本机 DNS 返回代理 fake-IP，因此没有把本机的 `198.18.*` 当成真实服务器地址。
-
-| 项目 | 实测结果 | 含义 |
-| --- | --- | --- |
-| `nanoka.tv` 的公网 A / AAAA / CNAME | 查询成功，但没有 Answer，只有 SOA | 根域尚未查到可用公网解析；CDN 上线未完成验收 |
-| 权威 DNS | `dns17.hichina.com`、`dns18.hichina.com` | 当前由阿里云 DNS 托管 |
-| `oss-origin.nanoka.tv` | CNAME 到 `nanoka-blog-prod-2026.cn-shanghai.taihangrda.cn`，再解析到 OSS IP | 上传域名的 DNS 链路已有结果 |
-| 上传域名 HTTPS | 证书链与域名验证通过 | TLS 基础链路可用 |
-| 源站 `/`、`/index.html`、`/posts`、`/posts/`、随机不存在目录 | 均为 HTTP 403，`AccessDenied`，`EC 0003-00000001`，提示 bucket acl | 匿名读取尚未通过；尚不能验收子目录首页或 404 |
-| 直接连接 OSS、SNI/Host=`nanoka.tv` | `nanoka.tv` 证书验证通过；GET 仍为 403 | 正式域名的 OSS 侧证书服务已有证据；不等于 CDN 侧配置正确 |
-| 两张可见 OSS 证书 | 到期 2026-12-15 07:59:59 北京时间 | 需要在到期前续签并重新部署 |
-
-**403 不足以证明桶一定是 private，也不证明对象已经存在。** 先检查桶 ACL、账号/桶“阻止公共访问”，首次上传后确认 `index.html` 存在且对象 ACL 继承公共读桶，再重新检查匿名 GET。不要仅为消除错误就放开整个账号的公共访问，先确定实际约束范围。[403 排障](https://help.aliyun.com/zh/oss/user-guide/http-403-error-code)、[阻止公共访问](https://help.aliyun.com/zh/oss/user-guide/block-public-access)
-
-还需要在控制台核对以下内容；操作记录没有足够证据证明已经完成：
-
-1. **CDN 源站继续使用选中的 OSS Bucket 地址**。回源 Host 与 HTTPS SNI 设为已绑定 OSS 的 `nanoka.tv`；不要把源站地址改成会解析回 CDN 的 `nanoka.tv`。
-2. **HTTPS 回源及匹配端口**。记录中的源站端口还是 80，需核实最终回源协议/端口；HTTPS 回源使用 443。
-3. **CDN 自己的 `nanoka.tv` 证书、HTTP → HTTPS、匿名 OSS 回源**。源站证书可用不证明 CDN 已配置证书；本方案关闭私有 OSS 签名回源。
-4. OSS 静态网站默认首页 `index.html`、子目录首页开启、目录 Redirect、自定义 `404.html` 且状态码 404。
-5. CDN 的 404 状态码缓存设为 0；基本缓存仍用现有 60 秒 / 300 秒 / 一年规则。关闭会改写 HTML/CSS 正文的页面优化；gzip/br 传输压缩可以正常使用。
-6. 首次上传后可用 `curl --resolve` 临时指向 CDN 节点验收，然后给根域 `@` 配置 CDN 分配的 CNAME。检查同名现存记录，不覆盖其他用途。
-
-依据：[OSS + CDN 及回源 Host](https://help.aliyun.com/zh/oss/user-guide/cdn-acceleration)、[回源协议](https://help.aliyun.com/zh/cdn/user-guide/configure-the-origin-protocol-policy)、[回源 SNI](https://help.aliyun.com/zh/cdn/user-guide/configure-sni)。
-
-## 5. 首次发布的操作顺序
-
-1. 核对上述 RAM、公共读取、静态网站和 CDN 配置。保持 `AUTO_DEPLOY` 关闭。
-2. 提交并推送这次工作流、三份部署脚本、部署测试与文档。注意仓库中还有原先未提交的 README 等改动，按实际内容选择提交；不要只提交 ci.yml 而漏掉它调用的脚本。
-3. 在 Actions → **Check and build → Run workflow → main**：保留 `dry_run=true`，`verify_cdn=false`。检查完整 validate、STS 交换、各阶段上传预览及桶根路径。**dry-run 不证明 PutObject 权限或网站可访问**，它没有上传文件。
-4. 再次 Run workflow → main，取消 `dry_run`，暂不勾选 `verify_cdn`。这次才实际上传，并自动验收源站。若上传成功但 HTTP 验收失败，文件已在 OSS；根据失败路径修复配置后重跑，不会自动回滚或删除。
-5. 验收 CDN 并配置正式 DNS。浏览器确认首页、文章、中文标签、游戏、音效、公式/代码复制与手机布局；访问 `/posts` 应跳到正式域名 `/posts/`，随机不存在路径应为自定义 404。
-6. Run workflow → main，`dry_run=false`、`verify_cdn=true`。源站和 CDN 都通过后，将 **Repository Variable `AUTO_DEPLOY` 设为 `true`**。
-7. 后续每次 push/merge main：检查 → 构建 → 同次 artifact → OSS 发布 → 源站/CDN 验收。PR 只验证，不获得生产凭证。开启变量不会追溯触发现有提交；需要下一次 push，或先手动发布。
-
-如果提示 main 已移动，发起一次新的 Run workflow → main；不要重跑旧的发布任务。日常源码回退可以 `git revert` 后推送新提交；精确恢复旧 artifact 需要独立审阅的恢复操作，不通过重跑旧 job 绕过版本检查。
-
-手动检查命令（在已生成对应生产 `dist/` 的仓库根目录执行）：
-
-```powershell
-$env:DEPLOY_VERIFY_TIMEOUT_MS = '30000'
-node scripts/verify-deployment.mjs https://oss-origin.nanoka.tv
-
-$env:DEPLOY_VERIFY_TIMEOUT_MS = '340000'
-node scripts/verify-deployment.mjs https://nanoka.tv
-```
-
-线上验收会比较本地文件与返回正文，因此应优先下载实际已部署的 Actions `dist-SHA` artifact，将其内容解压为本地 `dist/`，或用 CLI 的第三个参数指定解压目录。同一 Git commit 在 Windows 重新构建也不保证逐字节一致，例如直接复制的游戏 CSS 可能是 CRLF，而 Linux runner 是 LF。本轮实际观察到两份游戏 CSS 只差 738 个 CR 换行字节，规范化换行后内容相同；这不表示线上 CSS 损坏。CI 内使用同一份 artifact，无此本地重建差异。CDN 在总预算内重试，等待既有短缓存过期；不加 query 参数绕过缓存，以免错误地宣称正常 URL 已更新。长期旧缓存、页面优化改写或源站错误会使验收失败。
-
-## 6. CDN 刷新、归档和日常维护
-
-**本版没有自动调用 CDN 刷新 API。** 当前角色记录只含 OSS 权限，正常 HTML/游戏缓存 60 秒、RSS/sitemap/robots 300 秒已经可以完成发布；CDN 验收为这些缓存预留时间。首次接入或修改缓存规则后，可在 CDN 控制台刷新受影响路径。若希望每次立即刷新，再增加精确域名范围的 `cdn:RefreshObjectCaches` / `cdn:DescribeRefreshTasks` 权限和刷新任务查询流程；无需因此扩大 OSS 权限。[缓存策略](https://help.aliyun.com/zh/cdn/user-guide/configure-the-cdn-cache-expiration-time)、[刷新机制](https://help.aliyun.com/zh/cdn/user-guide/refresh-and-prefetch-resources)
-
-- 稳定版本保存完整 `dist-SHA` artifact（目前保留 14 天）与发布清单（90 天）。清单不是网站备份，长期回滚还需下载完整产物。
-- 无自动删除意味着旧哈希资源仍可供缓存页面使用；也意味着删除文章/改为 draft 不会下线历史 OSS 页面。真正下线要按清单删除具体对象并刷新 CDN，之后验证 404。
-- 多个固定文件名游戏资源不具备原子切换；先资源后 HTML 只能缩小风险窗口。将来有频繁游戏更新时，再为整套游戏资源增加版本目录或内容哈希。
-- `/coso` 与旧游戏入口已有静态跳转页。CDN 的直接 HTTP 重定向属于推荐增强，规则见部署指南，不能把整个游戏资源目录重定向走。
-- 证书续期后同时检查 OSS 两处证书和 CDN 证书是否已重新部署。配置余额/流量异常提醒、查看失败的 Actions，并保存首次完整验收结果。
-
-## 7. 本轮本地验证结果
-
-- `actionlint 1.7.12`：工作流语法、表达式与 action 参数检查通过；Bash 语法检查通过。
-- `npm run check`：0 errors / 0 warnings / 0 hints。
-- Node 测试：既有博客与游戏测试通过；新增线上验收测试最终 17 项通过，包含失败检测、重试和超时边界。
-- `SITE_URL=https://nanoka.tv npm run build:release`：构建通过，生成 34 个页面；现有构建验证器检查 38 个必需文件和 170 个站内引用。
-- 官方 ossutil 2.4.0 最终脚本 dry-run：七次命令分别选择 9 / 19 / 20 / 20 / 25 / 4 / 34 个文件，总计 131 个，与 dist 完全一致，无遗漏或重复。
-- 使用假凭据和本机 HTTP 接收器验证上传请求：字体 MIME、各组 Cache-Control、HTML inline 正确；没有设置对象 ACL。这个验证没有向生产 OSS 上传。
-- 部署前检查：当前六项 Variables 与产物通过；在临时副本中改错 canonical 会被拒绝。
-
-以上是最初本地验证结果；随后用户确认生产认证和上传成功，源站实测见第 9 节。CDN 服务状态仍需正式域名单独确认。
-
-## 8. 上传失败报告
-
-ossutil 的 `FinishWithError` / exit code 4 只是批量失败汇总，具体 HTTP 状态、OSS Error Code、Message、Request ID 和 EC 写在 `ossutil_output/*.report`。原工作流未收集报告，runner 结束后无法从汇总日志还原这些细节。
-
-现在上传失败时会自动运行 **Show OSS upload failure details**，在日志中输出脱敏报告，并保存 `oss-upload-diagnostics-<run-id>-<attempt>` artifact（7 天）。只归档脱敏结果，原始报告目录已加入 `.gitignore`；不启用可能输出请求凭证的 debug 日志。上传仍保持失败状态，后续 HTTP 验收不会继续。
-
-本次已明确发现的权限占位符可直接在 RAM 修正后重试；报告收集改动可随下次提交生效。若 main 已前进，使用新的 Run workflow → main，而不是重跑旧 SHA。
-
-## 9. 源站 HEAD 与 GET 对照验收
-
-2026-09-16 23:35–23:37（北京时间），对 `https://oss-origin.nanoka.tv` 进行了只读请求，重定向不自动跟随。结果如下：
-
-| 路径 | HEAD（curl -I） | GET（浏览器页面请求） |
-| --- | --- | --- |
-| `/` | 403 XML，EC `0003-00000905` | 200 HTML，7146 字节，与本地首页一致 |
-| `/index.html` | 200 HTML | 200 HTML，与首页一致 |
-| `/posts/` | 200 `application/x-directory`，0 字节 | 200 HTML，4921 字节，与文章列表一致 |
-| `/posts/index.html` | 200 HTML | 200 HTML，与文章列表一致 |
-| `/posts` | 404 XML，NoSuchKey | 302，`Location: /posts/` |
-| `/does-not-exist-test/` | 404 XML，NoSuchKey | 404 HTML，4527 字节，与 `404.html` 一致 |
-
-本次实测说明这些路径的 HEAD 没有得到与静态网站 GET 相同的处理结果。`posts/` 是递归上传时生成的 0 字节目录标记对象，HEAD 所见元数据不能代表 `posts/index.html` 的内容；GET 已正确解析到目录首页。`HEAD /` 的权限错误也不能据此认定桶归属错误或首页不可读。[HeadObject 元信息说明](https://help.aliyun.com/zh/oss/developer-reference/headobject)、[错误码解释](https://help.aliyun.com/zh/oss/user-guide/0003-00000905)
-
-当前无需为这些 HEAD 结果修改桶权限、删除目录标记或调整网站路由。使用以下命令验证页面行为：
-
-```powershell
-curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/
-curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/posts/
-curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/posts
-curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/does-not-exist-test/
-```
-
-顺序预期为 **200 HTML、200 HTML、302 → /posts/、404 HTML**。`-D -` 打印响应头，`-o NUL` 丢弃正文，默认请求仍为 GET。需要检查具体对象的元数据时，可以对 `/index.html`、`/posts/index.html` 等完整对象路径使用 `-I`。探活也宜使用 GET 首页，或 HEAD 具体的 `/index.html`。
-
-现有部署验收脚本使用 GET，保留严格的状态/正文校验。阿里云 CDN 对静态缓存资源默认将客户端 HEAD 转成 GET 回源，因此不能从源站 HEAD 推断 CDN 会给读者返回同样结果；正式 CDN 域名仍要单独检查。[CDN 官方说明](https://help.aliyun.com/zh/cdn/product-overview/limits)
-
-## 10. CDN HTTP 可访问、HTTPS 验收连接失败
-
-2026-09-16 23:58（北京时间）实测：
-
-| 目标 | 结果 |
+| 内容 | Cache-Control |
 | --- | --- |
-| `http://nanoka.tv/` | HTTP 200，Tengine，正确 HTML；尚未跳转 HTTPS |
-| `https://nanoka.tv/` | TLS 握手失败；Node 的底层错误码为 `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE` |
-| `https://oss-origin.nanoka.tv/` | HTTP 200，AliyunOSS，正确 HTML |
+| `_astro/` 内容哈希资源 | `public, max-age=31536000, immutable` |
+| HTML、固定文件名资源、游戏资源 | `public, max-age=60` |
+| RSS、sitemap、robots | `public, max-age=300` |
 
-用户的 CDN 截图明确显示 **HTTPS：未开启**。CNAME 正确和域名“正常运行”并不代表已开启 HTTPS。GitHub 工作流固定以 `https://$CDN_DOMAIN` 验收；此时连接在获取 HTTP 响应前就失败，所以所有页面和资源都报 TypeError，而不是某个文件的 404 或缓存不一致。[官方 HTTPS 排障](https://help.aliyun.com/zh/cdn/user-guide/https-troubleshooting-guide)
+CDN 验收最多等待约 340 秒，使用正常 URL，不加随机参数绕过缓存。当前没有自动刷新 CDN API；一般更新等待短 TTL 即可，修改缓存规则或需立即失效时可在 CDN 控制台刷新相关路径。
 
-修复步骤：
+若上传或线上验收失败，Actions 会失败；已经上传的对象不会自动回滚。按第一个失败步骤排查，再决定修复配置、重新发布或恢复上一版本。
 
-1. 阿里云 **CDN → 域名管理 → nanoka.tv → 管理 → HTTPS 配置 → HTTPS 证书 → 修改配置**。
-2. 开启 **HTTPS 安全加速**，选择已有、有效且覆盖 `nanoka.tv` 的证书。之前给正式域名申请的证书可以继续用于这里；只覆盖 `oss-origin.nanoka.tv` 的证书不能替代它。
-3. 保存，等待 CDN 配置下发，先确认 `https://nanoka.tv/` 能正常返回网页。
-4. 同页进入 **协议重定向**，设为 **HTTP → HTTPS**，再确认 HTTP 返回跳向 HTTPS 的重定向。
-5. 重新 Run workflow → main，设置 `dry_run=false`、`verify_cdn=true`。保持 `SITE_URL=https://nanoka.tv` 和 HTTPS 验收。
-6. 另行保持 CDN → OSS 的 HTTPS 回源、Host/SNI 配置与既定方案一致；它与本次浏览器 → CDN 的 HTTPS 开关是独立配置。
+## 5. 查看线上状态
 
-OSS 上部署证书不会自动启用 CDN 对外 HTTPS。有覆盖正式域名的有效证书时，可在 CDN 选择已有证书，无需为本问题先申请新证书。[配置 CDN HTTPS 证书](https://help.aliyun.com/zh/cdn/user-guide/configure-an-ssl-certificate)、[协议重定向](https://help.aliyun.com/zh/cdn/user-guide/configure-url-redirection)、[OSS HTTPS 与 CDN 的区别](https://help.aliyun.com/zh/oss/user-guide/access-oss-by-https-protocol)
+PowerShell 中使用 GET 打印响应头并丢弃正文：
 
 ```powershell
 curl.exe -sS -D - -o NUL https://nanoka.tv/
 curl.exe -sS -D - -o NUL http://nanoka.tv/
+curl.exe -sS -D - -o NUL https://nanoka.tv/posts/
+curl.exe -sS -D - -o NUL https://nanoka.tv/posts
+curl.exe -sS -D - -o NUL https://nanoka.tv/does-not-exist-check/
 ```
 
-最终预期：第一条 200 HTML；第二条重定向到 `https://nanoka.tv/`。
+预期分别为：200 HTML、重定向到 HTTPS、200 HTML、跳转到 `/posts/`、404 HTML。源站排查时换成 `https://oss-origin.nanoka.tv`。直接请求 OSS 时，HEAD（`curl -I`）可能读到桶/目录对象的元数据，不等同于静态网站 GET；检查页面请保留上述 GET 写法。
 
-### 加速区域与海外用户
+如需逐字节验收，下载已部署运行的 `dist-SHA` artifact 并解压，再执行：
 
-**仅中国内地加速不等于只允许中国内地用户访问。** 官方说明该选项下全球用户均由中国内地节点服务，海外用户会调度到华东电信节点；因此不能把 GitHub runner 位于海外直接当成本次连接失败的原因。跨境访问可能延迟更高，具体链路质量需实测。[加速区域官方说明](https://help.aliyun.com/zh/cdn/user-guide/change-the-accelerated-region)
+```powershell
+node scripts/verify-deployment.mjs https://nanoka.tv 'C:\path\to\extracted-dist'
+```
 
-如果希望兼顾境内和海外读者，可在 HTTPS 修复后把加速区域改为 **全球**，让用户择优调度至就近节点。仍可保留上海 OSS 作为源站；境外节点未命中缓存时仍需跨境回源，所以“全球”并不保证每次请求都没有跨境延迟。这是海外体验优化，不能替代启用 CDN HTTPS。[海外访问加速说明](https://help.aliyun.com/zh/cdn/use-alibaba-cloud-cdn-to-accelerate-user-access-in-regions-outside-the-chinese-mainland)
+最后的目录参数指向直接包含 `index.html` 的目录。同一提交在 Windows 重新构建时，复制的 CSS 可能保留 CRLF，与 Linux runner 的 LF 不同；这不等于线上内容损坏。精确比较应使用实际部署的 artifact。
 
-### 验收日志改进
+## 6. 失败排查
 
-原脚本仅输出 fetch 的外层 TypeError，导致 TLS、DNS、连接错误无法区分。现在会输出底层机器错误码和对应提示，同时继续省略可能含敏感信息的错误正文、请求 URL 和请求头；19 项验收脚本测试通过。对当前站点已复核能输出上述 TLS 握手错误码。此代码改动只改善排错，开启 CDN HTTPS 仍需在云端完成。
+| 现象 | 先检查 |
+| --- | --- |
+| OIDC / STS 失败 | Provider、Role、实际 subject、production 分支限制 |
+| ossutil `FinishWithError` | **Show OSS upload failure details** 日志及脱敏诊断 artifact；按 Error Code / Message / Request ID 排查 |
+| OSS AccessDenied | 部署角色绑定的生效策略、桶名和对象资源范围；匿名读与角色写权限分别核对 |
+| GET 失败且有 TLS 错误码 | CDN HTTPS 开关、正式域名证书及有效期；OSS 证书与 CDN 证书分别部署 |
+| ENOTFOUND / EAI_AGAIN | DNS / CNAME 及解析传播 |
+| 返回旧正文或错误缓存头 | 核对源站、CDN 缓存策略和实际部署 artifact；确认没有正文改写 |
+| 首页正常、目录或 404 不正常 | OSS 子目录首页、Redirect、自定义 404 状态；CDN 回源 Host 与路由规则 |
+
+脱敏上传报告只在失败时保存 7 天，不归档原始 `ossutil_output/`。正常发布不会运行这项诊断。
+
+## 7. 归档、删除与维护
+
+- `dist-SHA` artifact 保留 14 天，SHA256 文件清单保留 90 天。稳定版本应另存完整产物；清单不能代替网站备份。
+- 默认覆盖上传、不删除远端对象，保留旧哈希资源供缓存页面使用。删除文章或改为 draft 后，旧详情页仍可能存在；按准确对象清单下线，再刷新并确认 404。
+- 日常源码回退可通过 revert 后推送新提交；需要逐字节恢复历史版本时，使用已归档的完整 artifact，并审查失败版本独有页面。
+- 续签证书后，分别确认 OSS 上传域名、OSS 回源域名和 CDN 证书已部署。定期查看 Actions 失败、流量与费用提醒。
+- 公安备案等内容配置继续按 [发布前检查记录](PRELAUNCH_REVIEW.md) 的实际待办处理；技术部署成功不自动代表这些事项完成。
+- 若需要改善海外体验，可评估 CDN 的“全球”加速；这与 HTTPS 可用性是独立事项。基础配置与官方参考链接见部署指南。

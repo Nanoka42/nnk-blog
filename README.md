@@ -4,6 +4,8 @@
 
 第一次接触 npm、GitHub Actions 和静态部署，可以先阅读[从写文章到网站上线：构建与部署入门](docs/BUILD_AND_DEPLOY_EXPLAINED.md)，了解源码如何变成 `dist/`、构建产物保存在哪里，以及自动构建与自动部署的区别。
 
+网站已上线至 [nanoka.tv](https://nanoka.tv/)。日常发布、暂停自动发布、故障排查与回滚，请从[部署运维清单](docs/DEPLOYMENT_CHECKLIST.md)开始。
+
 ## 本地使用
 
 要求：Node.js **24 LTS**、npm。依赖版本和 lockfile 已锁定，不需要全局安装 Astro。
@@ -53,9 +55,9 @@ src/content/posts/             Markdown 文章与 draft 回归 fixture
 src/pages/                     页面、RSS、robots 和标签静态路由
 src/plugins/markdown.mjs        数学源保留、代码工具条、表格与标题锚点
 src/styles/                    全站与正文样式
-scripts/                       H5 集成与构建产物检查
-tests/                         内容、Markdown、浏览器回归
-.github/workflows/ci.yml        GitHub Actions 验证与 artifact 保存
+scripts/                       H5 集成、构建检查、OSS 上传与上线验收
+tests/                         内容、Markdown、部署工具与浏览器回归
+.github/workflows/ci.yml        GitHub Actions 验证、artifact 保存与 OSS/CDN 发布
 docs/                          实现、写作和部署指南
 dist/                          最终上传到 OSS 的静态文件（生成，不提交）
 ```
@@ -83,15 +85,18 @@ npm --prefix conway_checker_game run build
 
 ## CI 与上线
 
-`push` 到 `main`、Pull Request 和手动触发都会运行 CI：`npm ci → check → test → build:release → browser tests`，成功后保存可部署的 `dist-<commit SHA>` artifact。当前没有启用阿里云上传步骤。
+`push` 到 `main`、Pull Request 和手动触发都会运行 CI：`npm ci → check → test → build:release → browser tests`，成功后保存可部署的 `dist-<commit SHA>` artifact。部署 job 下载同次 artifact，先上传资源、后上传 HTML，并通过 GET 验收 OSS 源站和 HTTPS CDN。
 
-最终生产域名为 **`nanoka.tv`**，通过 `SITE_URL=https://nanoka.tv` 集中配置。未设置时，普通 `npm run build` 仍可用于本地检查，并输出禁止索引标记。上线前从 `.env.example` 创建 `.env`，或在 GitHub Repository Variables 设置 `SITE_URL`，再运行 `npm run build:release`；发布构建会拒绝缺失或无效的生产域名配置。
+Repository Variable `AUTO_DEPLOY=true` 时，`main` 的 push 会在检查通过后自动发布；设置为 `false` 可暂停自动发布，CI 仍照常运行。手动运行请选择 `main`：默认 `dry_run=true` 只预演上传，取消后执行真实发布及两端验收。Pull Request 不部署。
+
+生产域名为 **`nanoka.tv`**，通过 `SITE_URL=https://nanoka.tv` 集中配置。未设置时，普通 `npm run build` 仍可用于本地检查，并输出禁止索引标记。本地正式构建可从 `.env.example` 创建 `.env`；CI 使用 Repository Variable `SITE_URL` 或工作流中的生产默认值。`npm run build:release` 会拒绝缺失或无效的生产域名配置。
 
 `config/registration.mjs` 保留完整网站备案号 **粤ICP备2026138999号-1**；按广东规则，页脚展示主体备案号 **粤ICP备2026138999号**，并链接工信部备案系统。公安备案尚未完成，获批后再填入真实的备案号、查询链接和图标；办理步骤与上线检查见部署指南。
 
-规划链路：GitHub → GitHub Actions → 阿里云 OSS → CDN → AliDNS → 自定义域名。部署采用 GitHub OIDC / RAM Role / STS 临时凭证，不存储长期 AccessKey。
+发布链路：GitHub → GitHub Actions → 阿里云 OSS → CDN → 读者；AliDNS 将 `nanoka.tv` 指向 CDN。部署采用 GitHub OIDC / RAM Role / STS 临时凭证，不存储长期 AccessKey。2026-09-17 已完成源站与 CDN 发布验收。
 
 - [实现报告](docs/IMPLEMENTATION_REPORT.md)
 - [内容更新指南](docs/CONTENT_GUIDE.md)
+- [部署运维清单](docs/DEPLOYMENT_CHECKLIST.md)
 - [阿里云部署指南](docs/DEPLOYMENT_GUIDE.md)
 - [发布前检查记录](docs/PRELAUNCH_REVIEW.md)

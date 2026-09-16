@@ -2,11 +2,11 @@
 
 ## 当前状态
 
-**代码已完成：** Astro 静态输出、游戏自动集成、内容/类型/浏览器测试、生产链接检查、GitHub Actions CI、RSS、sitemap、robots、canonical 与基础 Open Graph。
+**已上线：** Astro 静态输出、游戏自动集成、内容/类型/浏览器测试、生产链接检查、GitHub Actions 构建与 OSS/CDN 部署、RSS、sitemap、robots、canonical 与基础 Open Graph。
 
 **已确认：** 主域名 `nanoka.tv`，网站名称「微羽笔记本」，网站备案号 `粤ICP备2026138999号-1`，2026-09-16 审核通过。按广东规则，页脚展示主体备案号 `粤ICP备2026138999号` 并链接工信部。备案记录中的实例 IP 为 `101.37.36.31`。
 
-**2026-09-16 状态更新：** 用户已完成 GitHub、OSS、RAM OIDC 和 production Environment 配置，修正权限策略后首次真实部署已成功。23:35–23:37 的源站 GET 复核确认：首页与文章列表正常，目录跳转和自定义 404 正常；直接对源站执行 HEAD 的结果与 GET 不同，验收命令应使用下方 GET 写法。CDN 正式域名仍需独立验收。具体实测、Variables、RAM 策略与发布步骤，以 [部署审查与首次发布清单](DEPLOYMENT_CHECKLIST.md) 为准。迁至 OSS + CDN 时，接入资源与备案记录的更新沿用已有接入商要求。
+**2026-09-17 状态更新：** 用户已确认 OSS 上传、源站验收、CDN HTTPS 与正式域名验收全部通过，网站及游戏正常可用。每次真实发布都会验收源站和 CDN；手动 dry run 保留为上传预演。日常发布、Variables、失败处理和回滚见[部署运维清单](DEPLOYMENT_CHECKLIST.md)。本文保留架构说明和云端配置参考，供修改或重建环境时查阅；接入资源与备案记录的更新沿用已有接入商要求。
 
 ## 1. 这条链路分别做什么
 
@@ -76,7 +76,7 @@ npm run preview
 
 不设置 `SITE_URL` 时仍可构建，但 canonical 指向 localhost，robots 输出 `Disallow: /`，页面有 noindex。这种产物只适合本地预览，**不能直接用于上线**。
 
-`npm run build:release` 会拒绝 localhost/noindex 的发布配置。现有 `.github/workflows/ci.yml` 使用该命令，在 push main、PR、手动触发时验证并保存 `dist-<commit SHA>`。CI 的默认生产 origin 是 `https://nanoka.tv`，可以用 Repository Variable `SITE_URL` 显式覆盖。Actions 页面显示绿勾后，点进该次运行即可下载 artifact；这不代表已经上传到云端。
+`npm run build:release` 会拒绝 localhost/noindex 的发布配置。现有 `.github/workflows/ci.yml` 使用该命令，在 push main、PR、手动触发时验证并保存 `dist-<commit SHA>`。CI 的默认生产 origin 是 `https://nanoka.tv`，可以用 Repository Variable `SITE_URL` 显式覆盖。Actions 页面可以下载成功保存的 artifact；是否已更新云端，要确认 deploy job 执行了真实上传并通过两端验收，不能只看整个运行的绿勾。
 
 ## 4. OSS 控制台
 
@@ -121,7 +121,7 @@ npm run preview
 7. AliDNS 中给根域 `@` 创建 CNAME，值复制 CDN 分配的加速 CNAME，不能填 OSS Endpoint。若同名已有其他记录，先审查现有用途再调整。
 8. 非 canonical 域名使用支持重定向的 CDN 配置、另一个加速域名或独立重定向服务做永久跳转。**DNS 本身不会产生 HTTP 301/308。** 根域名与 CNAME/MX 等记录可能冲突，应按现有 DNS 规划处理。
 
-参考：[OSS 接入 CDN](https://help.aliyun.com/en/oss/user-guide/cdn-acceleration)、[CDN 源站与回源 Host](https://help.aliyun.com/en/cdn/user-guide/configure-an-origin-server)。用户已记录部分配置，最终生效状态仍按部署清单验收。
+参考：[OSS 接入 CDN](https://help.aliyun.com/en/oss/user-guide/cdn-acceleration)、[CDN 源站与回源 Host](https://help.aliyun.com/en/cdn/user-guide/configure-an-origin-server)。修改这些配置后，应重新执行完整发布验收；DNS 解析成功和 OSS HTTPS 正常都不能单独证明 CDN 对外 HTTPS 正常。
 
 ### 康威跳棋短链
 
@@ -148,7 +148,7 @@ npm run preview
 
 规则匹配 path，不匹配域名或 query，目标保留尾斜杠。不要使用 `break`（它是内部改写），也不要把旧目录规则写成 `^/play/conway-soldiers/.*`，否则会把游戏脚本和音效也重定向走。阿里云这项功能默认是 **302**，文档没有保证普通控制台可直接选择 301；302 已满足短链需求。如需永久 301，应再核实账号可用的边缘脚本/重定向功能。查询参数按普通 Redirect 规则保留，hash 不发送到服务器。[阿里云访问 URL 重写说明](https://help.aliyun.com/zh/cdn/user-guide/create-an-access-url-rewrite-rule)
 
-这些是已准备好的配置值，尚未在云端应用。生效后执行：
+调整短链规则后，可用以下命令复核：
 
 ```powershell
 curl.exe -sS -D - -o NUL https://nanoka.tv/coso
@@ -169,7 +169,7 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 
 ### 缓存建议
 
-以下方案根据 2026-09-16 的工作区源码与现有 `dist/` 核对，适用于当前纯静态博客。用户操作记录已采用这些 CDN 规则；实际响应头与缓存行为仍需上线验收。
+以下方案适用于当前纯静态博客，上传脚本按此设置对象元数据，发布工作流抽查线上响应头与内容。修改缓存规则后应重新验收，并处理旧规则留下的缓存。
 
 #### 先区分页面地址与资源地址
 
@@ -310,22 +310,23 @@ RAM 控制台：集成管理 → SSO 管理 → 角色 SSO → OIDC → 创建�
 
 如果具体同步工具需要 HeadObject/GetObject 比较远端对象，才额外授予 `oss:GetObject`。`oss:DeleteObject` 仅在明确允许同步删除时增加到对象资源；默认不用删除，也不加 `--delete`。不要给 `AliyunOSSFullAccess`、创建桶、修改桶策略等权限。[OSS RAM 权限参考](https://www.alibabacloud.com/help/en/ram/api-object-storage-service)
 
-CDN 自动刷新权限需要另外设计，不能混在 OSS 全权限中。初次发布可在控制台手动刷新；以后若启用刷新 API，再按指定加速域名及当前 API 授权能力添加最小权限。
+CDN 自动刷新权限需要另外设计，不能混在 OSS 全权限中。当前发布等待短 TTL 自然到期，需要立即更新时可在控制台手动刷新；以后若启用刷新 API，再按指定加速域名及当前 API 授权能力添加最小权限。
 
 ### 当前部署 workflow
 
 部署实现在 `.github/workflows/ci.yml` 的独立 deploy job，无需再创建 deploy.yml；validate job 不接触云账号。当前流程为：
 
-1. 仅手动触发或 main 的成功发布触发，不接受 fork PR 凭证请求。
+1. 仅 main 的手动运行，或 `AUTO_DEPLOY=true` 时 main 的 push 才进入部署；PR 不部署。
 2. 验证/构建 job 只有 `contents: read`；确认 `SITE_URL` 已是 HTTPS 生产域名。
 3. 单独 deploy job 使用 `environment: production`、`contents: read` 和 `id-token: write`。
-4. 下载同一 commit 已验证的 dist artifact，避免部署另一版本。
+4. 检查当前 main SHA，下载同次运行已验证的 dist artifact；预检配置与产物，保存 SHA-256 文件清单。
 5. 使用阿里云官方 `aliyun/configure-aliyun-credentials-action`，填写 `oidc-provider-arn`、`role-to-assume`、`audience: sts.aliyuncs.com`；启用时核实版本并固定完整 commit SHA。
 6. 将得到的短期 AccessKeyId、AccessKeySecret、SecurityToken 通过环境传入上传工具，不写入仓库或日志；SecurityToken 不能遗漏。
-7. 上传 assets，再上传 HTML，设置 MIME/缓存 metadata，最后验证源站，并按触发方式验收 CDN；刷新暂采用短 TTL，控制台手动刷新作为补充。
+7. 真实发布先上传 assets，再上传 HTML，设置 MIME/缓存 metadata，然后依次验收源站和 HTTPS CDN；CDN 验收允许短 TTL 自然到期，控制台手动刷新作为补充。dry run 只预演上传，跳过 HTTP 验收。
 8. 部署 concurrency 应按 production 环境串行；不要中途取消正在上传的版本。
+9. 上传失败时输出并归档脱敏诊断报告；真实发布验收失败同样将本轮标记为失败。
 
-参考：[阿里云官方凭证 Action](https://github.com/aliyun/configure-aliyun-credentials-action)、[GitHub 的云端 OIDC 指南](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-cloud-providers)。当前工作流已实现上述认证和上传；CDN 刷新暂用短 TTL，不自动调用刷新 API。首次发布保留手动预演，验收后通过 Repository Variable `AUTO_DEPLOY=true` 启用 main 自动发布，详见 [操作清单](DEPLOYMENT_CHECKLIST.md)。
+参考：[阿里云官方凭证 Action](https://github.com/aliyun/configure-aliyun-credentials-action)、[GitHub 的云端 OIDC 指南](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-cloud-providers)。当前工作流已实现上述认证和上传；不自动调用 CDN 刷新 API。Repository Variable `AUTO_DEPLOY=true` 启用 main 自动发布，设为 `false` 可暂停；手动发布不受此开关影响，详见[部署运维清单](DEPLOYMENT_CHECKLIST.md)。
 
 使用的 Repository/Environment Variables（具体位置见操作清单）：
 
@@ -337,16 +338,16 @@ OSS_ENDPOINT
 ALIBABA_OIDC_PROVIDER_ARN
 ALIBABA_DEPLOY_ROLE_ARN
 CDN_DOMAIN
-AUTO_DEPLOY         # Repository Variable；首次验收后设 true
+AUTO_DEPLOY         # Repository Variable；true 自动发布，false 暂停
 ```
 
 脚本已固定 CNAME 寻址方式。OIDC 正常配置后不需要长期 AccessKey Secret；证书私钥也不应提交到 Git，优先在阿里云证书/CDN 控制台管理。
 
-## 7. 首次上线与验证
+## 7. 修改云端配置后的验证
 
-1. 完成域名、备案（适用时）、Bucket、CDN、HTTPS、DNS 和 RAM 配置。
+1. 确认域名、备案（适用时）、Bucket、CDN、HTTPS、DNS 和 RAM 配置仍符合本方案。
 2. 设置生产 `SITE_URL=https://nanoka.tv`，执行 `npm run check`、`npm test`、`npm run build:release`、`npm run test:browser`，或取得对应 commit 的成功 CI artifact。
-3. 使用配置好的部署角色临时凭证上传 **`dist/` 里面的文件** 到 Bucket 根：根对象应是 `index.html`，不是 `dist/index.html`。
+3. 在 main 上手动执行真实发布，工作流使用部署角色临时凭证上传 **`dist/` 里面的文件** 到 Bucket 根：根对象应是 `index.html`，不是 `dist/index.html`。
 4. 设置对象 Content-Type / Cache-Control；确认没有上传 `.env`、源码、测试文件或配置文件。
 5. 分别验证 OSS 源站和 CDN 域名，包含 `/`、`/posts/`、一篇文章、中文标签、`/projects/conway-soldiers/`、`/play/conway-soldiers/`、`/about/`、`/rss.xml`、`/robots.txt`、`/sitemap-index.xml`。
 6. 用不存在的地址验证 **HTTP 404** 和自定义错误页；用 `/posts` 验证尾斜线重定向；验证上述短链及旧游戏入口。
@@ -363,7 +364,7 @@ curl.exe -sS -D - -o NUL https://<生产域名>/posts
 curl.exe -sS -D - -o NUL https://<生产域名>/does-not-exist/
 ```
 
-`-D -` 将响应头打印到终端，`-o NUL` 丢弃正文，未加 `-I` 时仍发送 GET。验证目录跳转时先不加 `-L`，以便看见原始 302 / Location。直接访问 OSS 时，`curl -I` 发出的 HEAD 可能返回桶/目录对象元数据，而不是静态网站 GET 所对应的首页、跳转或错误页；本项目已实测这种差异，详见部署清单第 9 节。
+`-D -` 将响应头打印到终端，`-o NUL` 丢弃正文，未加 `-I` 时仍发送 GET。验证目录跳转时先不加 `-L`，以便看见原始 302 / Location。直接访问 OSS 时，`curl -I` 发出的 HEAD 可能返回桶/目录对象元数据，而不是静态网站 GET 所对应的首页、跳转或错误页；本项目已实测这种差异，手动与自动验收均使用 GET。
 
 文件上传不是原子操作。特别是游戏资源使用固定文件名，更新时应先上传其资源，再上传入口，尽量保持过渡版本兼容；不要在上传过程中清空整个桶。
 
@@ -391,4 +392,4 @@ curl.exe -sS -D - -o NUL https://<生产域名>/does-not-exist/
 | 复制失败 | 是否 HTTPS、浏览器是否拒绝剪贴板；站点提供手动选择源文本的回退 |
 | 搜索引擎不收录 | 是否用 localhost 配置构建、robots/noindex、canonical 是否正确 |
 
-原部署方案文档核查日期：2026-09-09；短链、备案及本轮发布流程更新于 2026-09-16。未在本轮重新实测所有历史云端步骤。实际开通云资源时请以对应账户区域的控制台与上述官方说明为准。
+云端配置参考核查于 2026-09-09 至 2026-09-16；发布流程和运行状态更新于 2026-09-17。用户已确认正式部署与 CDN 验收通过；后续修改云资源时，仍以对应账户区域的控制台、官方说明和实际验收结果为准。

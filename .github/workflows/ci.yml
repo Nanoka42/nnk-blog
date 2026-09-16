@@ -10,10 +10,6 @@ on:
         description: 'Preview uploads without changing OSS'
         type: boolean
         default: true
-      verify_cdn:
-        description: 'Also verify CDN (enable after nanoka.tv DNS is ready)'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -119,7 +115,7 @@ jobs:
           echo "Deploying commit: $GITHUB_SHA"
           # Keep the manifest outside dist so it is archived, not published.
           find dist -type f -print0 | sort -z | xargs -0 sha256sum > deployment-sha256.txt
-          cat deployment-sha256.txt
+          echo "Prepared checksums for $(wc -l < deployment-sha256.txt) files."
 
       - name: Save deployment manifest
         uses: actions/upload-artifact@v4
@@ -196,7 +192,7 @@ jobs:
         run: node scripts/verify-deployment.mjs "$OSS_ENDPOINT"
 
       - name: Verify CDN after short caches expire
-        if: ${{ !inputs.dry_run && (github.event_name == 'push' || inputs.verify_cdn) }}
+        if: ${{ !inputs.dry_run }}
         env:
           CDN_DOMAIN: ${{ vars.CDN_DOMAIN }}
           DEPLOY_VERIFY_TIMEOUT_MS: '340000'
@@ -205,17 +201,15 @@ jobs:
       - name: Summarize deployment scope
         env:
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
-          VERIFY_CDN: ${{ (github.event_name == 'push' || inputs.verify_cdn) && 'true' || 'false' }}
         shell: bash
         run: |
           {
             echo "Commit: $GITHUB_SHA"
             echo "Dry run: $DRY_RUN"
-            echo "CDN verification requested: $VERIFY_CDN"
             echo 'No remote objects were deleted. CDN cache refresh is not configured; verification allows up to 340 seconds for short caches.'
             if [ "$DRY_RUN" = true ]; then
               echo 'Preview only: no files were uploaded and HTTP verification was skipped.'
-            elif [ "$VERIFY_CDN" = false ]; then
-              echo 'OSS origin passed. CDN/DNS readiness has not been verified by this run.'
+            else
+              echo 'Deployment completed: OSS origin and CDN verification both passed.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
