@@ -2,7 +2,11 @@
 
 更新：2026-09-16。适用仓库：`Nanoka42/nnk-blog`，生产域名：`https://nanoka.tv`。
 
-本文区分三种证据：用户提供的控制台操作记录、本轮工作区代码检查、只读公网实测。没有登录阿里云控制台修改配置，没有提交、推送或运行生产部署，也没有核实 GitHub 上某次 CI / STS 已成功。最初部署计划中的“尚未修复锁文件”是历史状态，不应继续当作当前结论。
+本文区分三种证据：用户提供的控制台/工作流记录、工作区代码检查、只读公网实测。助手没有登录阿里云控制台修改配置，也没有代为提交、推送或触发生产部署；用户自行执行的结果按后续进展记录。最初部署计划中的“尚未修复锁文件”是历史状态，不应继续当作当前结论。
+
+**最新状态（同日 23:35–23:37）：** 用户确认修正 RAM 权限策略后，取消 dry-run 的部署轮次已成功。源站 GET 复核也已确认首页、文章列表、目录跳转及自定义 404 正常。此前 403、空桶 404 和首次写入失败的记录保留为历史；当前状态以本段和第 9 节为准。CDN 正式域名需要独立验收。
+
+**后续进展（同日）：** 用户确认 RAM 信任策略的两处错误仅为笔记错误，已开启 Bucket 公共读，GitHub dry-run 已成功。真实上传首批 9 个文件全部失败；用户随后提供的实际 `NanokaBlogDeployOSS` 权限策略中仍保留 `<BUCKET_NAME>`，因此未授权目标桶。应按下方实际桶名修正 Resource、保存为生效默认版本，并确认策略绑定 `nanoka-blog-deployer`。后续匿名 GET 已从 403 变成 `404 NoSuchKey`，符合首页尚未成功上传的状态；这不代表真实上传或整站验收已通过。
 
 ## 1. 已修正的工作流
 
@@ -78,6 +82,28 @@ Environment 的 subject 不包含 main，所以 production 的 **Selected branch
 
 现有 `oss:ListObjects`、`oss:PutObject`、`oss:GetObject` 可继续用于当前小文件部署。脚本在发布前拒绝单文件达到 100 MiB 的产物，避免将来无意触发分片上传所需的额外权限；确实需要大文件时再审核 ListParts / AbortMultipartUpload。无需改成 OSS FullAccess，也无需增加 DeleteObject。
 
+`NanokaBlogDeployOSS` 的实际权限策略应为以下内容，**不要保留 `<BUCKET_NAME>` 占位符**：
+
+```json
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "oss:ListObjects",
+      "Resource": "acs:oss:*:*:nanoka-blog-prod-2026"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["oss:PutObject", "oss:GetObject"],
+      "Resource": "acs:oss:*:*:nanoka-blog-prod-2026/*"
+    }
+  ]
+}
+```
+
+OIDC 允许获得角色临时凭证；上述权限策略决定角色可以对哪些 OSS 对象执行操作；Bucket 公共读允许匿名读取。这三者分别生效，dry-run 成功不能证明 PutObject 已获授权。
+
 ## 4. 公网实测：还不能认定只剩 CI
 
 检查时间：**2026-09-16 22:51–22:53（北京时间）**。DNS 使用 Google DNS over HTTPS 查询；TLS/GET 使用 Python 标准库并校验证书。本机 DNS 返回代理 fake-IP，因此没有把本机的 `198.18.*` 当成真实服务器地址。
@@ -127,7 +153,7 @@ $env:DEPLOY_VERIFY_TIMEOUT_MS = '340000'
 node scripts/verify-deployment.mjs https://nanoka.tv
 ```
 
-线上验收会比较本地文件与返回正文，因此本地 `dist/` 必须是待验收的版本。CDN 在总预算内重试，等待既有短缓存过期；不加 query 参数绕过缓存，以免错误地宣称正常 URL 已更新。长期旧缓存、页面优化改写或源站错误会使验收失败。
+线上验收会比较本地文件与返回正文，因此应优先下载实际已部署的 Actions `dist-SHA` artifact，将其内容解压为本地 `dist/`，或用 CLI 的第三个参数指定解压目录。同一 Git commit 在 Windows 重新构建也不保证逐字节一致，例如直接复制的游戏 CSS 可能是 CRLF，而 Linux runner 是 LF。本轮实际观察到两份游戏 CSS 只差 738 个 CR 换行字节，规范化换行后内容相同；这不表示线上 CSS 损坏。CI 内使用同一份 artifact，无此本地重建差异。CDN 在总预算内重试，等待既有短缓存过期；不加 query 参数绕过缓存，以免错误地宣称正常 URL 已更新。长期旧缓存、页面优化改写或源站错误会使验收失败。
 
 ## 6. CDN 刷新、归档和日常维护
 
@@ -149,4 +175,40 @@ node scripts/verify-deployment.mjs https://nanoka.tv
 - 使用假凭据和本机 HTTP 接收器验证上传请求：字体 MIME、各组 Cache-Control、HTML inline 正确；没有设置对象 ACL。这个验证没有向生产 OSS 上传。
 - 部署前检查：当前六项 Variables 与产物通过；在临时副本中改错 canonical 会被拒绝。
 
-这份清单不替代云端首次部署验收。当前代码可提交评审；生产认证、实际上传和 CDN 服务状态仍须由首次工作流结果确认。
+以上是最初本地验证结果；随后用户确认生产认证和上传成功，源站实测见第 9 节。CDN 服务状态仍需正式域名单独确认。
+
+## 8. 上传失败报告
+
+ossutil 的 `FinishWithError` / exit code 4 只是批量失败汇总，具体 HTTP 状态、OSS Error Code、Message、Request ID 和 EC 写在 `ossutil_output/*.report`。原工作流未收集报告，runner 结束后无法从汇总日志还原这些细节。
+
+现在上传失败时会自动运行 **Show OSS upload failure details**，在日志中输出脱敏报告，并保存 `oss-upload-diagnostics-<run-id>-<attempt>` artifact（7 天）。只归档脱敏结果，原始报告目录已加入 `.gitignore`；不启用可能输出请求凭证的 debug 日志。上传仍保持失败状态，后续 HTTP 验收不会继续。
+
+本次已明确发现的权限占位符可直接在 RAM 修正后重试；报告收集改动可随下次提交生效。若 main 已前进，使用新的 Run workflow → main，而不是重跑旧 SHA。
+
+## 9. 源站 HEAD 与 GET 对照验收
+
+2026-09-16 23:35–23:37（北京时间），对 `https://oss-origin.nanoka.tv` 进行了只读请求，重定向不自动跟随。结果如下：
+
+| 路径 | HEAD（curl -I） | GET（浏览器页面请求） |
+| --- | --- | --- |
+| `/` | 403 XML，EC `0003-00000905` | 200 HTML，7146 字节，与本地首页一致 |
+| `/index.html` | 200 HTML | 200 HTML，与首页一致 |
+| `/posts/` | 200 `application/x-directory`，0 字节 | 200 HTML，4921 字节，与文章列表一致 |
+| `/posts/index.html` | 200 HTML | 200 HTML，与文章列表一致 |
+| `/posts` | 404 XML，NoSuchKey | 302，`Location: /posts/` |
+| `/does-not-exist-test/` | 404 XML，NoSuchKey | 404 HTML，4527 字节，与 `404.html` 一致 |
+
+本次实测说明这些路径的 HEAD 没有得到与静态网站 GET 相同的处理结果。`posts/` 是递归上传时生成的 0 字节目录标记对象，HEAD 所见元数据不能代表 `posts/index.html` 的内容；GET 已正确解析到目录首页。`HEAD /` 的权限错误也不能据此认定桶归属错误或首页不可读。[HeadObject 元信息说明](https://help.aliyun.com/zh/oss/developer-reference/headobject)、[错误码解释](https://help.aliyun.com/zh/oss/user-guide/0003-00000905)
+
+当前无需为这些 HEAD 结果修改桶权限、删除目录标记或调整网站路由。使用以下命令验证页面行为：
+
+```powershell
+curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/
+curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/posts/
+curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/posts
+curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/does-not-exist-test/
+```
+
+顺序预期为 **200 HTML、200 HTML、302 → /posts/、404 HTML**。`-D -` 打印响应头，`-o NUL` 丢弃正文，默认请求仍为 GET。需要检查具体对象的元数据时，可以对 `/index.html`、`/posts/index.html` 等完整对象路径使用 `-I`。探活也宜使用 GET 首页，或 HEAD 具体的 `/index.html`。
+
+现有部署验收脚本使用 GET，保留严格的状态/正文校验。阿里云 CDN 对静态缓存资源默认将客户端 HEAD 转成 GET 回源，因此不能从源站 HEAD 推断 CDN 会给读者返回同样结果；正式 CDN 域名仍要单独检查。[CDN 官方说明](https://help.aliyun.com/zh/cdn/product-overview/limits)

@@ -6,7 +6,7 @@
 
 **已确认：** 主域名 `nanoka.tv`，网站名称「微羽笔记本」，网站备案号 `粤ICP备2026138999号-1`，2026-09-16 审核通过。按广东规则，页脚展示主体备案号 `粤ICP备2026138999号` 并链接工信部。备案记录中的实例 IP 为 `101.37.36.31`。
 
-**2026-09-16 状态更新：** GitHub 远程仓库已经建立；用户已记录 OSS、CDN、证书、RAM OIDC 和 production Environment 的配置。仓库现已补齐部署工作流、分阶段上传与线上验收。首次真实部署和 CDN 验收仍待执行；本轮公网检查还发现源站匿名读取 403、根域未查到可用公网解析。具体实测、Variables、RAM 策略核对与首次发布步骤，以 [部署审查与首次发布清单](DEPLOYMENT_CHECKLIST.md) 为准。迁至 OSS + CDN 时，接入资源与备案记录的更新沿用已有接入商要求。
+**2026-09-16 状态更新：** 用户已完成 GitHub、OSS、RAM OIDC 和 production Environment 配置，修正权限策略后首次真实部署已成功。23:35–23:37 的源站 GET 复核确认：首页与文章列表正常，目录跳转和自定义 404 正常；直接对源站执行 HEAD 的结果与 GET 不同，验收命令应使用下方 GET 写法。CDN 正式域名仍需独立验收。具体实测、Variables、RAM 策略与发布步骤，以 [部署审查与首次发布清单](DEPLOYMENT_CHECKLIST.md) 为准。迁至 OSS + CDN 时，接入资源与备案记录的更新沿用已有接入商要求。
 
 ## 1. 这条链路分别做什么
 
@@ -151,10 +151,10 @@ npm run preview
 这些是已准备好的配置值，尚未在云端应用。生效后执行：
 
 ```powershell
-curl.exe -I https://nanoka.tv/coso
-curl.exe -I https://nanoka.tv/conways_checkers/
-curl.exe -I https://nanoka.tv/play/conway-soldiers/
-curl.exe -I https://nanoka.tv/play/conway-soldiers/src/app.js
+curl.exe -sS -D - -o NUL https://nanoka.tv/coso
+curl.exe -sS -D - -o NUL https://nanoka.tv/conways_checkers/
+curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/
+curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 ```
 
 前三项应得到重定向到 `/projects/conway-soldiers/` 的 Location；最后一项应为正常 JavaScript 响应，不能重定向。另检查 `/conway-checkers-extra/` 仍是 404。
@@ -353,14 +353,17 @@ AUTO_DEPLOY         # Repository Variable；首次验收后设 true
 7. 检查页面 canonical 与 Open Graph URL 已指向生产域名，robots 没有误留 `Disallow: /`。
 8. 在 HTTPS 下尝试行内/独立公式、代码复制；测试游戏摆子、移动、音效和手机布局。
 
-Windows 上可以用：
+Windows 上使用 GET 查看响应头，保留实际网站路由行为：
 
 ```powershell
 Resolve-DnsName <生产域名>
-curl.exe -I https://<生产域名>/
-curl.exe -I https://<生产域名>/posts/
-curl.exe -I https://<生产域名>/does-not-exist/
+curl.exe -sS -D - -o NUL https://<生产域名>/
+curl.exe -sS -D - -o NUL https://<生产域名>/posts/
+curl.exe -sS -D - -o NUL https://<生产域名>/posts
+curl.exe -sS -D - -o NUL https://<生产域名>/does-not-exist/
 ```
+
+`-D -` 将响应头打印到终端，`-o NUL` 丢弃正文，未加 `-I` 时仍发送 GET。验证目录跳转时先不加 `-L`，以便看见原始 302 / Location。直接访问 OSS 时，`curl -I` 发出的 HEAD 可能返回桶/目录对象元数据，而不是静态网站 GET 所对应的首页、跳转或错误页；本项目已实测这种差异，详见部署清单第 9 节。
 
 文件上传不是原子操作。特别是游戏资源使用固定文件名，更新时应先上传其资源，再上传入口，尽量保持过渡版本兼容；不要在上传过程中清空整个桶。
 

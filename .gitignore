@@ -8,6 +8,7 @@ public/play/
 !.env.example
 playwright-report/
 test-results/
+ossutil_output/
 *.log
 Thumbs.db
 .DS_Store
