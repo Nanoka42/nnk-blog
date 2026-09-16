@@ -6,7 +6,7 @@
 
 **已确认：** 主域名 `nanoka.tv`，网站名称「微羽笔记本」，网站备案号 `粤ICP备2026138999号-1`，2026-09-16 审核通过。按广东规则，页脚展示主体备案号 `粤ICP备2026138999号` 并链接工信部。备案记录中的实例 IP 为 `101.37.36.31`。
 
-**仍需配置：** GitHub 远程仓库、OSS Bucket、CDN、HTTPS 证书、AliDNS、RAM OIDC Provider 与部署 Role，以及获得参数后才启用的上传 workflow。当前没有部署到云端，没有修改 DNS，没有创建或保存凭证。未来迁至 OSS + CDN 时，应向接入商确认接入资源与备案记录需要如何更新；CDN 的动态解析 IP 与备案实例 IP 不同，本身不能直接判断为备案违规。
+**2026-09-16 状态更新：** GitHub 远程仓库已经建立；用户已记录 OSS、CDN、证书、RAM OIDC 和 production Environment 的配置。仓库现已补齐部署工作流、分阶段上传与线上验收。首次真实部署和 CDN 验收仍待执行；本轮公网检查还发现源站匿名读取 403、根域未查到可用公网解析。具体实测、Variables、RAM 策略核对与首次发布步骤，以 [部署审查与首次发布清单](DEPLOYMENT_CHECKLIST.md) 为准。迁至 OSS + CDN 时，接入资源与备案记录的更新沿用已有接入商要求。
 
 ## 1. 这条链路分别做什么
 
@@ -19,7 +19,7 @@ GitHub Actions             在临时机器 npm ci、检查、测试、构建
   ↓ CDN 回源读取
 阿里云 CDN                 在边缘缓存内容、提供 HTTPS 加速
   ↑ AliDNS CNAME
-www.<你的域名>             读者访问的地址
+nanoka.tv                  读者访问的地址
 ```
 
 AliDNS 只负责告诉浏览器域名指向哪里，不运行网站；CDN 没有文件时到 OSS 获取。Astro 的构建过程需要 Node.js，网站访问过程不需要。
@@ -46,14 +46,12 @@ ARN、Bucket 名和域名通常属于配置标识，不是密码。**不要把�
 
 ## 3. GitHub 仓库与本地发布检查
 
-工作区初始不是 Git 仓库。本次未替你创建远程仓库或提交。先在 GitHub 创建仓库，再在根目录运行（远程 URL 替换为自己的）：
+当前仓库已连接 `Nanoka42/nnk-blog`，无需重复初始化或更改 remote。日常先审查本地改动，再提交并推送：
 
 ```bash
-git init -b main
-git add .
-git commit -m "Create static Nanoka blog"
-git remote add origin <你的-GitHub-仓库-URL>
-git push -u origin main
+git status
+git diff
+# 按实际变更选择 git add 的文件，然后 commit / push origin main。
 ```
 
 提交前用 `git status` 确认 `.env`、`node_modules`、`dist`、`public/play`、`.generated` 和测试截图都没有被加入。原素材和 H5 源码需要提交。
@@ -114,16 +112,16 @@ npm run preview
 
 ## 5. CDN、HTTPS 与 AliDNS
 
-1. CDN 控制台添加最终加速域名，例如 `www.<域名>`。
+1. CDN 控制台添加最终加速域名 `nanoka.tv`。
 2. 选择加速区域。包含中国内地时，先确认域名已完成 ICP 备案；境外区域仍需按所选服务与区域的要求配置。
-3. 源站类型选择 OSS，指定发布 Bucket。回源 Host 使用该 Bucket 对应的源站域名，不能填 CDN 自己的域名形成回环。
+3. 源站类型选择 OSS，指定发布 Bucket 地址。按本项目方案，将 `nanoka.tv` 绑定到 OSS，并将 CDN 回源 Host / HTTPS SNI 设为 `nanoka.tv`，OSS 侧部署匹配证书。源站地址决定连接目标，回源 Host 决定 OSS 的域名路由；不要把源站地址改为解析回 CDN 的 `nanoka.tv`。
 4. 当前公开只读桶方案使用匿名回源，不开启私有 OSS 签名回源。
 5. 如默认 Endpoint 限制影响回源，结合该 Bucket 的 CDN 接入与自定义域名配置验证直连源站，不能仅凭上传成功推断 CDN 可用。
 6. 在 CDN 为加速域名配置有效 HTTPS 证书与自动/定期续期，开启 HTTP → HTTPS。证书须覆盖实际访问域名。
-7. AliDNS 中给 `www` 创建 CNAME，值复制 CDN 分配的加速 CNAME，不能填 OSS Endpoint。若同名已有 A/AAAA/CNAME，先审查现有用途再调整。
+7. AliDNS 中给根域 `@` 创建 CNAME，值复制 CDN 分配的加速 CNAME，不能填 OSS Endpoint。若同名已有其他记录，先审查现有用途再调整。
 8. 非 canonical 域名使用支持重定向的 CDN 配置、另一个加速域名或独立重定向服务做永久跳转。**DNS 本身不会产生 HTTP 301/308。** 根域名与 CNAME/MX 等记录可能冲突，应按现有 DNS 规划处理。
 
-参考：[OSS 接入 CDN](https://help.aliyun.com/en/oss/user-guide/cdn-acceleration)、[CDN 源站与回源 Host](https://help.aliyun.com/en/cdn/user-guide/configure-an-origin-server)。这些控制台与 DNS 操作尚未执行。
+参考：[OSS 接入 CDN](https://help.aliyun.com/en/oss/user-guide/cdn-acceleration)、[CDN 源站与回源 Host](https://help.aliyun.com/en/cdn/user-guide/configure-an-origin-server)。用户已记录部分配置，最终生效状态仍按部署清单验收。
 
 ### 康威跳棋短链
 
@@ -171,17 +169,81 @@ curl.exe -I https://nanoka.tv/play/conway-soldiers/src/app.js
 
 ### 缓存建议
 
-| 对象 | 建议的源站 Cache-Control | CDN 建议 |
+以下方案根据 2026-09-16 的工作区源码与现有 `dist/` 核对，适用于当前纯静态博客。用户操作记录已采用这些 CDN 规则；实际响应头与缓存行为仍需上线验收。
+
+#### 先区分页面地址与资源地址
+
+| URL | 当前用途 | 对应构建产物 |
 | --- | --- | --- |
-| `/_astro/*` 哈希资源 | `public, max-age=31536000, immutable` | 长缓存，保留旧哈希资源 |
-| HTML | `public, max-age=0, must-revalidate` | 短缓存或遵循源站，发布后刷新 |
-| `rss.xml`、sitemap、robots | `public, max-age=300` | 短缓存 |
-| `/play/conway-soldiers/*` 非哈希脚本、样式、图片、音效 | `public, max-age=300` | 短缓存，升级游戏时刷新整个前缀 |
-| favicon 等非哈希文件 | `public, max-age=3600` | 中短缓存 |
+| `/projects/` | 作品列表；`projects` 是复数 | `dist/projects/index.html` |
+| `/projects/conway-soldiers/` | 游戏主页面，直接显示棋盘 | `dist/projects/conway-soldiers/index.html` |
+| `/play/conway-soldiers/` | 旧入口的兼容跳转页 | `dist/play/conway-soldiers/index.html` |
+| `/play/conway-soldiers/src/`、`icons/`、`sounds/` | 仍在使用的游戏脚本、样式、图标与音效 | `dist/play/conway-soldiers/` 下相应目录 |
+| `/_astro/` | Astro 生成的带内容哈希的样式、图片、字体等资源 | `dist/_astro/` |
 
-这些是部署时设置的 OSS 对象 metadata / CDN 规则，静态 HTML 不能自动设置 HTTP 缓存头，当前构建没有假装已配置它们。上传工具还应设置正确 Content-Type：HTML、CSS、JavaScript、WebP、PNG、SVG、WAV、WOFF2、XML 与 TXT。
+依据：[主入口与旧入口映射](../config/redirects.mjs)、[游戏页面中的资源地址转换](../src/pages/projects/conway-soldiers.astro)、[游戏资源复制脚本](../scripts/prepare-game.mjs)。原游戏构建直接复制 `app.js`、`styles.css`、`move.wav` 等固定文件名，不会自动为它们添加内容哈希。
 
-CDN 的目录/后缀缓存规则可能覆盖源站的 `no-cache`/短缓存，请检查优先级，不要统一把全部文件缓存一年。[CDN 缓存优先级](https://help.aliyun.com/en/cdn/user-guide/configure-the-cdn-cache-expiration-time)
+**因此，不能把缓存表里的 `/play/conway-soldiers/` 简单替换成 `/projects/conway-soldiers/`。两个目录都存在，但用途不同。** 当前没有 `/project/` 页面。
+
+#### CDN 控制台填写表
+
+进入 CDN → 域名管理 → 缓存配置 → 缓存过期时间，配置以下四条。表中地址按原文填写，目录不添加 `*`，后缀不添加点号。
+
+| 类型 | 地址 | 过期时间 | 权重 | 其他选项 | 理由 |
+| --- | --- | --- | --- | --- | --- |
+| 目录 | `/` | 1 分钟（60 秒） | 10 | 以下四项均关闭 | 全站兜底；首页、文章、作品列表、游戏主页面和静态跳转页都能较快更新 |
+| 目录 | `/_astro/` | 1 年（31536000 秒） | 90 | 以下四项均关闭 | 当前此目录使用带内容哈希的资源名，内容变化会产生新 URL，适合长缓存 |
+| 目录 | `/play/conway-soldiers/` | 1 分钟（60 秒） | 80 | 以下四项均关闭 | 游戏资源会以相同 URL 覆盖更新，避免旧脚本、样式或音效长期滞留；也覆盖旧入口的静态跳转页 |
+| 文件后缀名 | `xml,txt` | 5 分钟（300 秒） | 30 | 以下四项均关闭 | 覆盖 `/rss.xml`、`/sitemap-index.xml`、`/sitemap-0.xml` 和 `/robots.txt` |
+
+这里的四个选项是：**优先遵循源站缓存策略、忽略源站不缓存标头、客户端跟随 CDN 缓存策略、强制内容重新验证**。全部关闭需与下方 OSS 响应头配套使用。
+
+`/` 是全站路径兜底，不仅匹配首页；多条规则匹配时取高权重。因此 `/projects/conway-soldiers/` 已由权重 10 的规则覆盖，无需再加一条相同的 60 秒规则。`/play/` 规则目前与兜底时间相同，保留它是为了在以后调整全站兜底时，仍明确约束固定文件名游戏资源的缓存时间。[阿里云缓存规则说明](https://help.aliyun.com/zh/cdn/user-guide/configure-the-cdn-cache-expiration-time)
+
+例如，`/play/conway-soldiers/src/app.js` 命中权重 80，`/_astro/BaseLayout.<哈希>.css` 命中权重 90，而 `/favicon.svg` 使用兜底的 60 秒。暂不额外添加全站 `js,css,png,svg` 一年缓存规则，也不把整个 `/projects/` 设为长缓存。
+
+#### OSS 对象的 Cache-Control 要一起设置
+
+上表控制 CDN 节点；浏览器也有自己的缓存。关闭“客户端跟随 CDN 缓存策略”时，不会自动把表里的 TTL 作为浏览器缓存头。为避免浏览器按缺省行为缓存，上传时为对象明确设置以下 HTTP 元数据：
+
+| OSS 对象范围 | 建议的 Cache-Control | 对应 CDN 时长 |
+| --- | --- | --- |
+| `_astro/` 下带内容哈希的文件 | `public, max-age=31536000, immutable` | 1 年 |
+| 所有 HTML，包括 `projects/conway-soldiers/index.html`、旧入口与短链的 `index.html` | `public, max-age=60` | 正常页面响应 1 分钟 |
+| `play/conway-soldiers/` 下非哈希脚本、样式、图标、音效 | `public, max-age=60` | 1 分钟 |
+| `rss.xml`、`sitemap-index.xml`、`sitemap-0.xml`、`robots.txt` | `public, max-age=300` | 5 分钟 |
+| `favicon.svg` 等其他未版本化文件 | `public, max-age=60` | 1 分钟 |
+
+**这替换了旧建议中 HTML 的 `max-age=0, must-revalidate`。** 在“忽略源站不缓存标头”关闭时，源站的 `max-age=0`、`no-cache`、`no-store` 等会妨碍预期的 CDN 60 秒缓存，不能同时把这两套配置理解成“浏览器立即验证、CDN 缓存一分钟”。本方案统一采用明确的短 TTL；若以后需要浏览器每次验证，应另外设计并验收浏览器与 CDN 分别控制的策略。[阿里云缓存排障说明](https://help.aliyun.com/zh/cdn/user-guide/cache-troubleshooting)
+
+这些 HTTP 头必须通过 OSS 对象 metadata 或相应的 CDN 响应头配置设置；静态 HTML 的 meta 标签不能代替它们。当前 `scripts/deploy-oss.sh` 已按上表设置缓存，并设置或推断对应 Content-Type；`scripts/verify-deployment.mjs` 会对主要页面及资源进行抽查。
+
+以上是正常资源的缓存方案。真正的 404、5xx 响应要单独检查“状态码过期时间”，不能用这张目录表推断错误响应的 TTL；上线初期不要为错误响应另配长缓存。
+
+#### 发布、刷新与验收
+
+1. 先上传新资源，再上传引用它们的 HTML，确认 OSS 上的内容和元数据已经更新。
+2. 普通文章发布若需尽快可见，刷新受影响的页面 URL，包括首页、文章列表、文章页和标签页；订阅与站点地图按需一起刷新。
+3. 游戏更新时同时刷新主页面 `https://nanoka.tv/projects/conway-soldiers/` 和资源目录 `https://nanoka.tv/play/conway-soldiers/`。只刷新 `/projects/` 不会刷新游戏资源。如果显式的 `index.html` URL 也曾被访问缓存，需一并刷新或使用对应目录刷新。
+4. `/_astro/` 新哈希文件通常无需刷新；保留仍可能被旧页面或回滚版本引用的旧哈希文件，避免发布同步时立即删除它们。
+5. 改缓存规则或 OSS 缓存头后，刷新受影响的存量缓存。CDN 刷新不能清除读者浏览器中已经保存的副本；短 TTL 也不保证已经打开的页面自动更新。[阿里云刷新说明](https://help.aliyun.com/zh/cdn/user-guide/refresh-and-prefetch-resources)
+
+游戏的多份 JS 仍使用固定 URL，60 秒缓存与发布刷新只能缩短新旧版本混用的窗口，不能保证多文件原子切换。若以后要延长游戏资源缓存，应先将整套资源及其引用改成带版本目录或内容哈希的 URL。
+
+上线后可在 PowerShell 中执行以下 GET 请求查看响应头，并对同一 URL 重复请求以观察缓存命中：
+
+```powershell
+curl.exe -sS -D - -o NUL https://nanoka.tv/projects/conway-soldiers/
+curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
+curl.exe -sS -D - -o NUL https://nanoka.tv/rss.xml
+curl.exe -sS -D - -o NUL https://nanoka.tv/favicon.svg
+
+# 从这次构建中选一个真实的哈希资源，不把示例哈希写死。
+$cdnAsset = Get-ChildItem -LiteralPath './dist/_astro' -File | Select-Object -First 1
+curl.exe -sS -D - -o NUL "https://nanoka.tv/_astro/$($cdnAsset.Name)"
+```
+
+检查 `Cache-Control`、`X-Cache`、`Age`、`X-Swift-CacheTime`（若返回）和 `Content-Type`，将浏览器缓存头与 CDN 命中状态分开判断；节点间转发可能让缓存时间字段小于表中 TTL。尤其确认游戏 `app.js` 返回 JavaScript，而不是被旧入口重定向规则变成 HTML。[阿里云缓存验证与排障](https://help.aliyun.com/zh/cdn/user-guide/cache-troubleshooting)
 
 ## 6. GitHub OIDC → RAM Role → STS
 
@@ -250,9 +312,9 @@ RAM 控制台：集成管理 → SSO 管理 → 角色 SSO → OIDC → 创建�
 
 CDN 自动刷新权限需要另外设计，不能混在 OSS 全权限中。初次发布可在控制台手动刷新；以后若启用刷新 API，再按指定加速域名及当前 API 授权能力添加最小权限。
 
-### 未来的部署 workflow
+### 当前部署 workflow
 
-现有 CI 没有 `id-token: write`，也不接触云账号。待上述信息齐全后再新增 `.github/workflows/deploy.yml`，建议：
+部署实现在 `.github/workflows/ci.yml` 的独立 deploy job，无需再创建 deploy.yml；validate job 不接触云账号。当前流程为：
 
 1. 仅手动触发或 main 的成功发布触发，不接受 fork PR 凭证请求。
 2. 验证/构建 job 只有 `contents: read`；确认 `SITE_URL` 已是 HTTPS 生产域名。
@@ -260,25 +322,25 @@ CDN 自动刷新权限需要另外设计，不能混在 OSS 全权限中。初�
 4. 下载同一 commit 已验证的 dist artifact，避免部署另一版本。
 5. 使用阿里云官方 `aliyun/configure-aliyun-credentials-action`，填写 `oidc-provider-arn`、`role-to-assume`、`audience: sts.aliyuncs.com`；启用时核实版本并固定完整 commit SHA。
 6. 将得到的短期 AccessKeyId、AccessKeySecret、SecurityToken 通过环境传入上传工具，不写入仓库或日志；SecurityToken 不能遗漏。
-7. 上传 assets，再上传 HTML，设置 MIME/缓存 metadata，最后验证并刷新 CDN。
+7. 上传 assets，再上传 HTML，设置 MIME/缓存 metadata，最后验证源站，并按触发方式验收 CDN；刷新暂采用短 TTL，控制台手动刷新作为补充。
 8. 部署 concurrency 应按 production 环境串行；不要中途取消正在上传的版本。
 
-参考：[阿里云官方凭证 Action](https://github.com/aliyun/configure-aliyun-credentials-action)、[GitHub 的云端 OIDC 指南](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-cloud-providers)。当前没有创建一个看似能发布、实际缺少上传参数的半成品 workflow。
+参考：[阿里云官方凭证 Action](https://github.com/aliyun/configure-aliyun-credentials-action)、[GitHub 的云端 OIDC 指南](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-cloud-providers)。当前工作流已实现上述认证和上传；CDN 刷新暂用短 TTL，不自动调用刷新 API。首次发布保留手动预演，验收后通过 Repository Variable `AUTO_DEPLOY=true` 启用 main 自动发布，详见 [操作清单](DEPLOYMENT_CHECKLIST.md)。
 
-未来使用的 Repository/Environment Variables：
+使用的 Repository/Environment Variables（具体位置见操作清单）：
 
 ```text
 SITE_URL
 OSS_REGION
 OSS_BUCKET
 OSS_ENDPOINT
-OSS_USE_CNAME       # 采用直连自定义上传域名时 true
 ALIBABA_OIDC_PROVIDER_ARN
 ALIBABA_DEPLOY_ROLE_ARN
 CDN_DOMAIN
+AUTO_DEPLOY         # Repository Variable；首次验收后设 true
 ```
 
-变量名将在启用的上传脚本中统一使用。OIDC 正常配置后不需要长期 AccessKey Secret；证书私钥也不应提交到 Git，优先在阿里云证书/CDN 控制台管理。
+脚本已固定 CNAME 寻址方式。OIDC 正常配置后不需要长期 AccessKey Secret；证书私钥也不应提交到 Git，优先在阿里云证书/CDN 控制台管理。
 
 ## 7. 首次上线与验证
 

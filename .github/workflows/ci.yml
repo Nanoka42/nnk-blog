@@ -5,13 +5,22 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview uploads without changing OSS'
+        type: boolean
+        default: true
+      verify_cdn:
+        description: 'Also verify CDN (enable after nanoka.tv DNS is ready)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   validate:
@@ -45,3 +54,150 @@ jobs:
         with:
           name: browser-diagnostics
           path: test-results/
+
+  deploy:
+    name: Deploy to Alibaba Cloud OSS
+
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && vars.AUTO_DEPLOY == 'true'))
+
+    needs: validate
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # AUTO_DEPLOY must be a repository variable: environment variables are
+      # unavailable when GitHub evaluates the job-level condition above.
+      - name: Refuse to deploy an outdated main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          latest="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+          if [ "$latest" != "$GITHUB_SHA" ]; then
+            echo '::error::main has moved. Start a new Run workflow on main; do not rerun an old deployment.'
+            exit 1
+          fi
+
+      - name: Download validated artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+
+      - name: Check deployable artifact
+        shell: bash
+        env:
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          ALIBABA_OIDC_PROVIDER_ARN: ${{ vars.ALIBABA_OIDC_PROVIDER_ARN }}
+          ALIBABA_DEPLOY_ROLE_ARN: ${{ vars.ALIBABA_DEPLOY_ROLE_ARN }}
+          CDN_DOMAIN: ${{ vars.CDN_DOMAIN }}
+        run: |
+          node scripts/check-deployment.mjs
+          echo "Deploying commit: $GITHUB_SHA"
+          # Keep the manifest outside dist so it is archived, not published.
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > deployment-sha256.txt
+          cat deployment-sha256.txt
+
+      - name: Save deployment manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-manifest-${{ github.sha }}-${{ github.run_attempt }}
+          path: deployment-sha256.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Install ossutil 2.4.0
+        shell: bash
+        run: |
+          curl --retry 3 --connect-timeout 15 --max-time 120 -fsSLo /tmp/ossutil.zip \
+            https://gosspublic.alicdn.com/ossutil/v2/2.4.0/ossutil-2.4.0-linux-amd64.zip
+
+          echo "85edf66b2fb7238f5c7e25cab820cf29312319fe4935b7c86a6b8485eb434f3c  /tmp/ossutil.zip" \
+            | sha256sum -c -
+
+          mkdir -p /tmp/ossutil
+          unzip -q /tmp/ossutil.zip -d /tmp/ossutil
+
+          sudo install -m 0755 \
+            /tmp/ossutil/ossutil-2.4.0-linux-amd64/ossutil \
+            /usr/local/bin/ossutil
+
+          ossutil version
+
+      - name: Assume Alibaba Cloud deployment role
+        id: aliyun
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        with:
+          oidc-provider-arn: ${{ vars.ALIBABA_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIBABA_DEPLOY_ROLE_ARN }}
+          audience: sts.aliyuncs.com
+          role-session-name: gha-${{ github.run_id }}
+          role-session-expiration: 1800
+
+      - name: Upload assets, then pages to OSS
+        shell: bash
+        env:
+          OSS_ACCESS_KEY_ID: ${{ steps.aliyun.outputs.aliyun-access-key-id }}
+          OSS_ACCESS_KEY_SECRET: ${{ steps.aliyun.outputs.aliyun-access-key-secret }}
+          OSS_SESSION_TOKEN: ${{ steps.aliyun.outputs.aliyun-security-token }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          bash scripts/deploy-oss.sh
+
+      - name: Verify OSS origin
+        if: ${{ !inputs.dry_run }}
+        env:
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          DEPLOY_VERIFY_TIMEOUT_MS: '30000'
+        run: node scripts/verify-deployment.mjs "$OSS_ENDPOINT"
+
+      - name: Verify CDN after short caches expire
+        if: ${{ !inputs.dry_run && (github.event_name == 'push' || inputs.verify_cdn) }}
+        env:
+          CDN_DOMAIN: ${{ vars.CDN_DOMAIN }}
+          DEPLOY_VERIFY_TIMEOUT_MS: '340000'
+        run: node scripts/verify-deployment.mjs "https://$CDN_DOMAIN"
+
+      - name: Summarize deployment scope
+        env:
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          VERIFY_CDN: ${{ (github.event_name == 'push' || inputs.verify_cdn) && 'true' || 'false' }}
+        shell: bash
+        run: |
+          {
+            echo "Commit: $GITHUB_SHA"
+            echo "Dry run: $DRY_RUN"
+            echo "CDN verification requested: $VERIFY_CDN"
+            echo 'No remote objects were deleted. CDN cache refresh is not configured; verification allows up to 340 seconds for short caches.'
+            if [ "$DRY_RUN" = true ]; then
+              echo 'Preview only: no files were uploaded and HTTP verification was skipped.'
+            elif [ "$VERIFY_CDN" = false ]; then
+              echo 'OSS origin passed. CDN/DNS readiness has not been verified by this run.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

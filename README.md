@@ -2,6 +2,8 @@
 
 一个基于 Astro、TypeScript 和 Markdown 的个人博客。纯静态生成，最终只需部署 `dist/`，无需 Node.js 服务、数据库或服务器渲染。
 
+第一次接触 npm、GitHub Actions 和静态部署，可以先阅读[从写文章到网站上线：构建与部署入门](docs/BUILD_AND_DEPLOY_EXPLAINED.md)，了解源码如何变成 `dist/`、构建产物保存在哪里，以及自动构建与自动部署的区别。
+
 ## 本地使用
 
 要求：Node.js **24 LTS**、npm。依赖版本和 lockfile 已锁定，不需要全局安装 Astro。
