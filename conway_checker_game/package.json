@@ -1,0 +1,15 @@
+{
+  "name": "conway-soldiers-h5",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "本地资源、零运行依赖的康威跳棋 H5",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/serve.mjs dist"
+  },
+  "engines": { "node": ">=20.11" }
+}

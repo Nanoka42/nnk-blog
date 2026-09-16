@@ -1,0 +1,16 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import { formatDate, postUrl, tagUrl } from '../lib/content-utils';
+interface Props { post: CollectionEntry<'posts'>; headingLevel?: 'h2' | 'h3'; }
+const { post, headingLevel: Heading = 'h2' } = Astro.props;
+---
+<article class="post-card">
+  <div class="post-date"><time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>{post.data.draft && <span class="draft-label">草稿</span>}</div>
+  <div class="post-card-body">
+    <Heading><a href={postUrl(post.id)}>{post.data.title}</a></Heading>
+    <p>{post.data.description}</p>
+    <div class="post-meta"><div class="tags">{post.data.tags.map((tag) => <a href={tagUrl(tag)}>{tag}</a>)}</div>{post.data.updatedDate && <small>更新于 <time datetime={post.data.updatedDate.toISOString()}>{formatDate(post.data.updatedDate)}</time></small>}</div>
+  </div>
+  {post.data.cover && <a class="post-thumb" href={postUrl(post.id)} tabindex="-1" aria-hidden="true"><Image src={post.data.cover} alt="" width={240} format="webp" /></a>}
+</article>

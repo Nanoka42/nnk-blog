@@ -1,0 +1,6 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProjectCard from '../../components/ProjectCard.astro';
+import { projects } from '../../config';
+---
+<BaseLayout title="交互作品" description="真理院七叶的交互作品与小实验。"><header class="page-heading"><p class="eyebrow">INTERACTIVE WORKS</p><h1>交互作品</h1><p>一些可以点击、游玩和探索的作品。</p></header><section class="projects-list" aria-label="作品列表">{projects.map((project) => <ProjectCard project={project} />)}</section></BaseLayout>

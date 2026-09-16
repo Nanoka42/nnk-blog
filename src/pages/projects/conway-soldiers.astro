@@ -1,0 +1,55 @@
+---
+import { load } from 'cheerio';
+import source from '../../../.generated/conway.html?raw';
+import Registration from '../../components/Registration.astro';
+import { isLocalSite } from '../../../config/site.mjs';
+import { conwayPath } from '../../../config/redirects.mjs';
+import { profile, projects } from '../../config';
+
+// The standalone game owns its HTML and logic. Adapt its document at build time;
+// keep its relative module/audio URLs together under the stable asset directory.
+const $ = load(source);
+if ($('head').length !== 1 || $('#board').length !== 1 || $('.credits').length !== 1) {
+  throw new Error('The standalone game document changed; review its blog integration.');
+}
+for (const node of $('[src], [href]').toArray()) {
+  for (const attribute of ['src', 'href']) {
+    const value = $(node).attr(attribute);
+    if (value?.startsWith('./')) $(node).attr(attribute, `/play/conway-soldiers/${value.slice(2)}`);
+  }
+}
+$('.credits').prepend('<p><a href="/projects/">← 所有交互作品</a></p>');
+const project = projects.find((item) => item.slug === 'conway-soldiers')!;
+const canonical = new URL(conwayPath, Astro.site);
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <Fragment set:html={$('head').html()} />
+    <link rel="canonical" href={canonical} />
+    {isLocalSite && <meta name="robots" content="noindex, nofollow" />}
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content={profile.title} />
+    <meta property="og:title" content={project.title} />
+    <meta property="og:description" content={project.description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL(project.cover.src, Astro.site)} />
+  </head>
+  <body>
+    <Fragment set:html={$('body').html()} />
+    <footer class="game-site-footer">
+      <a class="game-back-link" href="/projects/" aria-label="返回交互作品列表">← 作品</a>
+      <Registration />
+    </footer>
+  </body>
+</html>
+<style is:global>
+  body { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100%; height: 100dvh; }
+  .game { height: 100%; min-height: 0; }
+  .game-site-footer { position: relative; padding: 6px max(64px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(64px, env(safe-area-inset-left)); background: var(--panel); color: #626457; border-top: 1px solid var(--line); }
+  .game-back-link { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 6px; color: inherit; font-size: .75rem; line-height: 1.6; text-decoration: none; }
+  .game-back-link:hover { text-decoration: underline; }
+  .game-back-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  .credits a { color: var(--green); text-underline-offset: .2em; }
+</style>

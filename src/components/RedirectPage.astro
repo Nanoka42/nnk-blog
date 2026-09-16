@@ -1,0 +1,31 @@
+---
+import Registration from './Registration.astro';
+interface Props { target: string; }
+const { target } = Astro.props;
+if (!target.startsWith('/') || target.startsWith('//')) throw new Error('Redirect target must be a local absolute path.');
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>正在前往康威跳棋</title>
+    <meta name="description" content="正在前往康威跳棋的主要页面。" />
+    <meta name="robots" content="noindex, follow" />
+    <meta http-equiv="refresh" content={`0;url=${target}`} />
+    <link rel="canonical" href={new URL(target, Astro.site)} />
+    <script is:inline define:vars={{ target }}>
+      window.location.replace(target + window.location.search + window.location.hash);
+    </script>
+  </head>
+  <body>
+    <main><p>正在前往<a href={target}>康威跳棋 →</a></p></main>
+    <footer><Registration /></footer>
+  </body>
+</html>
+<style>
+  body { margin: 0; padding: 2rem; color: #292532; background: #fcfbfd; font: 1rem/1.7 system-ui, sans-serif; text-align: center; }
+  main { min-height: 60vh; display: grid; place-items: center; }
+  a { color: #725391; }
+  footer { color: #696273; }
+</style>

@@ -1,0 +1,43 @@
+<p id="copy-feedback" class="copy-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+<dialog id="copy-fallback" aria-labelledby="copy-fallback-title">
+  <h2 id="copy-fallback-title">复制源代码</h2>
+  <p>浏览器未允许自动复制。请选中下方文本，长按复制，或按 Ctrl / ⌘ + C。</p>
+  <textarea id="copy-fallback-source" readonly aria-label="原始代码或 TeX"></textarea>
+  <form method="dialog"><button class="button" value="close">关闭</button></form>
+</dialog>
+<noscript><p class="notice">公式与代码已静态渲染；启用 JavaScript 后可使用复制按钮。</p></noscript>
+<script>
+  const status = document.querySelector<HTMLElement>('#copy-feedback');
+  const fallback = document.querySelector<HTMLDialogElement>('#copy-fallback');
+  const sourceField = document.querySelector<HTMLTextAreaElement>('#copy-fallback-source');
+  const timers = new WeakMap<HTMLButtonElement, ReturnType<typeof setTimeout>>();
+  let statusTimer: ReturnType<typeof setTimeout>;
+  document.addEventListener('click', async (event) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest<HTMLButtonElement>('button[data-copy-source]');
+    if (!button) return;
+    const source = button.dataset.copySource;
+    if (source === undefined) return;
+    try {
+      await navigator.clipboard.writeText(source);
+      if (!button.dataset.originalLabel) button.dataset.originalLabel = button.innerHTML;
+      clearTimeout(timers.get(button));
+      button.textContent = '已复制';
+      button.classList.add('copied');
+      if (status) status.textContent = '已复制原始源代码';
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => { if (status) status.textContent = ''; }, 2200);
+      timers.set(button, setTimeout(() => {
+        button.innerHTML = button.dataset.originalLabel || '复制';
+        button.classList.remove('copied');
+      }, 2200));
+    } catch {
+      if (fallback && sourceField) {
+        sourceField.value = source;
+        fallback.showModal();
+        sourceField.focus();
+        sourceField.select();
+      }
+    }
+  });
+</script>

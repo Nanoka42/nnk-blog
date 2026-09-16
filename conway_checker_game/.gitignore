@@ -1,0 +1,5 @@
+dist/
+release/
+.npm-cache/
+node_modules/
+*.log

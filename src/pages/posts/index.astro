@@ -1,0 +1,9 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import { getPosts } from '../../lib/posts';
+import { tagUrl } from '../../lib/content-utils';
+const posts = await getPosts();
+const tags = [...new Set(posts.flatMap((post) => post.data.tags))].sort();
+---
+<BaseLayout title="文章" description="真理院七叶的技术探索、学习笔记与创作记录。"><header class="page-heading"><p class="eyebrow">ARTICLES</p><h1>文章<span class="count">{posts.length}</span></h1></header><nav class="tag-filter" aria-label="按标签浏览"><span>全部文章</span>{tags.map((tag) => <a href={tagUrl(tag)}>{tag}</a>)}</nav><section class="post-list" aria-label="文章列表">{posts.map((post) => <PostCard post={post} />)}</section></BaseLayout>

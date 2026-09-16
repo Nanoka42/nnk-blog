@@ -1,0 +1,31 @@
+---
+import { Image } from 'astro:assets';
+import { render, type CollectionEntry } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import CopyControls from '../../components/CopyControls.astro';
+import { getPosts } from '../../lib/posts';
+import { formatDate, postUrl, tagUrl, readingMinutes } from '../../lib/content-utils';
+import 'katex/dist/katex.min.css';
+import '../../styles/prose.css';
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts.map((post, index) => ({ params: { id: post.id }, props: { post, newer: posts[index - 1], older: posts[index + 1] } }));
+}
+interface Props { post: CollectionEntry<'posts'>; newer?: CollectionEntry<'posts'>; older?: CollectionEntry<'posts'>; }
+const { post, newer, older } = Astro.props;
+const { Content, headings } = await render(post);
+const toc = headings.filter((heading) => heading.depth >= 2 && heading.depth <= 3);
+const hasToc = toc.length >= 3;
+---
+<BaseLayout title={post.data.title} description={post.data.description} image={post.data.cover?.src} article published={post.data.pubDate} updated={post.data.updatedDate} noindex={post.data.draft}>
+  <div class="article-layout">
+    <article class="article">
+      <header class="article-heading"><a class="back-link" href="/posts/">← 所有文章</a>{post.data.draft && <p class="notice">草稿预览 · 不会进入生产构建</p>}<div class="tags">{post.data.tags.map((tag) => <a href={tagUrl(tag)}>{tag}</a>)}</div><h1>{post.data.title}</h1><p class="article-description">{post.data.description}</p><p class="article-dates"><time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>{post.data.updatedDate && <span>更新于 <time datetime={post.data.updatedDate.toISOString()}>{formatDate(post.data.updatedDate)}</time></span>}<span>约 {readingMinutes(post.body)} 分钟</span></p>{post.data.cover && <Image class="article-cover" src={post.data.cover} alt={post.data.coverAlt!} widths={[400, 800, 1200]} sizes="(max-width: 800px) 100vw, 760px" width={1200} format="webp" />}</header>
+      {hasToc && <details class="mobile-toc"><summary>文章目录</summary><ol>{toc.map((heading) => <li class:list={{ nested: heading.depth === 3 }}><a href={`#${heading.slug}`}>{heading.text}</a></li>)}</ol></details>}
+      <div class="prose"><Content /></div>
+      <nav class="article-navigation" aria-label="相邻文章"><div>{older && <a href={postUrl(older.id)}><span>← 上一篇</span>{older.data.title}</a>}</div><div>{newer && <a href={postUrl(newer.id)}><span>下一篇 →</span>{newer.data.title}</a>}</div></nav>
+      <CopyControls />
+    </article>
+    {hasToc && <aside class="desktop-toc" aria-label="文章目录"><span class="eyebrow">ON THIS PAGE</span><p>本页目录</p><ol>{toc.map((heading) => <li class:list={{ nested: heading.depth === 3 }}><a href={`#${heading.slug}`}>{heading.text}</a></li>)}</ol><a class="back-link" href="#main">回到顶部 ↑</a></aside>}
+  </div>
+</BaseLayout>

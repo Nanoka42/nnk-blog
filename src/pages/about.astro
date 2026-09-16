@@ -1,0 +1,6 @@
+---
+import { Image } from 'astro:assets';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { profile } from '../config';
+---
+<BaseLayout title="关于" description={profile.bio}><div class="about-layout"><div class="about-portrait"><Image src={profile.avatar} alt="真理院七叶的紫发猫耳角色头像" width={480} format="webp" /><span class="eyebrow">HELLO, I’M NANOKA!</span></div><div class="about-copy"><p class="eyebrow">ABOUT THIS SITE</p><h1>微羽笔记本</h1><p class="about-intro">{profile.bio}</p><p>{profile.note}</p><hr /><h2>在别处找到我</h2><div class="social-cards"><a href={profile.github} target="_blank" rel="noopener noreferrer"><span>GitHub</span><strong>nanoka42 ↗</strong></a><a href={profile.bilibili} target="_blank" rel="noopener noreferrer"><span>Bilibili</span><strong>个人空间 ↗</strong></a></div></div></div></BaseLayout>

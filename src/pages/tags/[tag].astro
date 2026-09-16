@@ -1,0 +1,21 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import { getPosts } from '../../lib/posts';
+import { tagSlug } from '../../lib/content-utils';
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  const groups = new Map<string, { name: string; posts: CollectionEntry<'posts'>[] }>();
+  for (const post of posts) for (const name of new Set(post.data.tags)) {
+    const slug = tagSlug(name);
+    const group = groups.get(slug);
+    if (group && group.name !== name) throw new Error(`标签规范化冲突：${group.name} / ${name}，请统一名称。`);
+    if (group) group.posts.push(post); else groups.set(slug, { name, posts: [post] });
+  }
+  return [...groups].map(([tag, group]) => ({ params: { tag }, props: group }));
+}
+interface Props { name: string; posts: CollectionEntry<'posts'>[]; }
+const { name, posts } = Astro.props;
+---
+<BaseLayout title={`标签：${name}`} description={`阅读关于 ${name} 的文章。`}><header class="page-heading"><a class="back-link" href="/posts/">← 所有文章</a><p class="eyebrow">FILED UNDER</p><h1>{name}<span class="count">{posts.length}</span></h1></header><section class="post-list" aria-label={`${name} 文章`}>{posts.map((post) => <PostCard post={post} />)}</section></BaseLayout>

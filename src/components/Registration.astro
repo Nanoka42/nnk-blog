@@ -1,0 +1,13 @@
+---
+import { icpRegistration, publicSecurityRegistration } from '../../config/registration.mjs';
+---
+<div class="registration" aria-label="网站备案信息">
+  <a href={icpRegistration.url} target="_blank" rel="noopener noreferrer">{icpRegistration.number}</a>
+  {publicSecurityRegistration && <a href={publicSecurityRegistration.url} target="_blank" rel="noopener noreferrer"><img src={publicSecurityRegistration.icon} alt="" width="16" height="16" />{publicSecurityRegistration.number}</a>}
+</div>
+<style>
+  .registration { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: .25rem 1rem; font-size: .75rem; line-height: 1.6; text-align: center; }
+  .registration a { display: inline-flex; align-items: center; gap: .3rem; color: inherit; text-decoration: none; }
+  .registration a:hover { text-decoration: underline; text-underline-offset: .2em; }
+  .registration a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+</style>

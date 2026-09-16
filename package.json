@@ -1,0 +1,35 @@
+{
+  "name": "nanoka-blog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/prepare-game.mjs && astro dev --host 127.0.0.1",
+    "build": "node scripts/prepare-game.mjs && astro build && node scripts/verify-build.mjs",
+    "build:release": "node scripts/build-release.mjs",
+    "preview": "astro preview --host 127.0.0.1",
+    "check": "node scripts/prepare-game.mjs && astro check",
+    "test": "node --test tests/*.test.mjs && npm --prefix conway_checker_game test",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/rss": "4.0.19",
+    "@astrojs/sitemap": "3.7.4",
+    "astro": "7.3.2",
+    "katex": "0.18.7",
+    "rehype-slug": "6.0.0",
+    "remark-math": "6.0.0",
+    "unist-util-visit": "5.1.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@astrojs/markdown-remark": "7.3.1",
+    "@playwright/test": "1.63.0",
+    "@types/katex": "0.16.8",
+    "cheerio": "1.2.0",
+    "typescript": "6.0.3"
+  }
+}

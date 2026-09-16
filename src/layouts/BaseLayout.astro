@@ -1,0 +1,92 @@
+---
+import { profile } from '../config';
+import Registration from '../components/Registration.astro';
+import { isLocalSite } from '../../config/site.mjs';
+import '../styles/global.css';
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+  article?: boolean;
+  published?: Date;
+  updated?: Date;
+  noindex?: boolean;
+}
+const { title, description = profile.description, image, article, published, updated, noindex } = Astro.props;
+const fullTitle = title ? `${title} · ${profile.name}` : profile.title;
+const pathname = Astro.url.pathname;
+const canonicalPath = pathname === '/404/' ? '/404.html' : /\.[^/]+$/.test(pathname) ? pathname : `${pathname.replace(/\/$/, '')}/`;
+const canonical = new URL(canonicalPath, Astro.site);
+const path = Astro.url.pathname;
+const nav = [['/', '首页'], ['/posts/', '文章'], ['/projects/', '交互作品'], ['/about/', '关于']];
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {(noindex || isLocalSite) && <meta name="robots" content="noindex, nofollow" />}
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content={profile.title} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={article ? 'article' : 'website'} />
+    <meta property="og:url" content={canonical} />
+    {image && <meta property="og:image" content={new URL(image, Astro.site)} />}
+    {published && <meta property="article:published_time" content={published.toISOString()} />}
+    {updated && <meta property="article:modified_time" content={updated.toISOString()} />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title={profile.title} href="/rss.xml" />
+    <meta name="color-scheme" content="light dark" />
+    <script is:inline>
+      // Set the theme before paint. Storage failure must never block reading.
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('nanoka-theme') || 'system'; } catch {}
+        if (!['light', 'dark', 'system'].includes(preference)) preference = 'system';
+        document.documentElement.dataset.themePreference = preference;
+        document.documentElement.dataset.theme = preference === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : preference;
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="site-header wrap">
+      <a class="wordmark" href="/" aria-label="真理院七叶，首页"><span class="brand-mark" aria-hidden="true">7</span><span>{profile.name}<small>NANOKA’S NOTEBOOK</small></span></a>
+      <nav aria-label="主导航">{nav.map(([href, label]) => <a href={href} aria-current={(href === '/' ? path === '/' : path.startsWith(href)) ? 'page' : undefined}>{label}</a>)}</nav>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="主题：跟随系统，点击切换" title="切换主题"><span aria-hidden="true">◐</span><span id="theme-label">系统</span></button>
+    </header>
+    <main id="main" class="wrap" tabindex="-1"><slot /></main>
+    <footer class="site-footer wrap">
+      <p>© {new Date().getUTCFullYear()} {profile.name}<span class="footer-note">真理院七叶 nanoka42@qq.com</span></p>
+      <div><a href={profile.github} target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href={profile.bilibili} target="_blank" rel="noopener noreferrer">Bilibili ↗</a><a href="/rss.xml">RSS</a></div>
+      <Registration />
+    </footer>
+    <script>
+      const control = document.querySelector<HTMLButtonElement>('#theme-toggle');
+      const label = document.querySelector('#theme-label');
+      const media = matchMedia('(prefers-color-scheme: dark)');
+      const modes = ['system', 'light', 'dark'];
+      const labels: Record<string, string> = { system: '系统', light: '浅色', dark: '深色' };
+      function applyTheme() {
+        const mode = document.documentElement.dataset.themePreference || 'system';
+        document.documentElement.dataset.theme = mode === 'system' ? (media.matches ? 'dark' : 'light') : mode;
+        if (label) label.textContent = labels[mode];
+        control?.setAttribute('aria-label', `主题：${labels[mode]}，点击切换至${labels[modes[(modes.indexOf(mode) + 1) % modes.length]]}`);
+      }
+      control?.addEventListener('click', () => {
+        const current = document.documentElement.dataset.themePreference || 'system';
+        const next = modes[(modes.indexOf(current) + 1) % modes.length];
+        document.documentElement.dataset.themePreference = next;
+        try { localStorage.setItem('nanoka-theme', next); } catch {}
+        applyTheme();
+      });
+      media.addEventListener('change', applyTheme);
+      applyTheme();
+    </script>
+  </body>
+</html>

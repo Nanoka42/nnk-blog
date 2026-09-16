@@ -1,0 +1,8 @@
+---
+import RedirectPage from '../components/RedirectPage.astro';
+import { redirectPaths, conwayPath } from '../../config/redirects.mjs';
+export function getStaticPaths() {
+  return redirectPaths.map((redirect) => ({ params: { redirect } }));
+}
+---
+<RedirectPage target={conwayPath} />

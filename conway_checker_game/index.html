@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3eee4">
+  <meta name="description" content="在无限棋盘上自由摆子，探索康威跳棋。四向跳吃，你能到达第几行？">
+  <title>康威跳棋 · Conway’s Soldiers</title>
+  <link rel="icon" href="./icons/piece_all.png">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <main class="game" aria-label="康威跳棋游戏">
+    <canvas id="board" tabindex="0" role="application" aria-label="无限棋盘。方向键移动光标，空格或回车操作格子，W A S D 平移，加减键缩放。" aria-describedby="board-help"></canvas>
+    <div class="edge-softness" aria-hidden="true"><i class="edge-left"></i><i class="edge-right"></i><i class="edge-top"></i><i class="edge-bottom"></i></div>
+    <header class="brand" aria-label="康威跳棋">
+      <span class="brand-en">CONWAY’S SOLDIERS</span>
+      <h1>康威跳棋</h1>
+    </header>
+    <div class="toolbar game-tools" role="toolbar" aria-label="游戏操作">
+      <button id="primary-action" class="tool primary" type="button" title="开始跳棋"><img src="./icons/play.png" alt=""><span>开始跳棋</span></button>
+      <span class="separator" aria-hidden="true"></span>
+      <button id="secondary-action" class="tool icon-only" type="button" title="清空棋子" aria-label="清空棋子"><img src="./icons/trash_can.png" alt=""></button>
+      <button id="tertiary-action" class="tool icon-only" type="button" title="放满棋子" aria-label="放满棋子"><img src="./icons/piece_all.png" alt=""></button>
+    </div>
+    <div class="toolbar view-tools" role="toolbar" aria-label="视图控制">
+      <button id="home" class="tool icon-only" type="button" title="回到初始视图" aria-label="回到初始视图" disabled><img src="./icons/home.png" alt=""></button>
+      <span class="separator" aria-hidden="true"></span>
+      <button id="zoom-in" class="tool icon-only" type="button" title="放大视图" aria-label="放大视图"><img src="./icons/zoom_in.png" alt=""></button>
+      <button id="zoom-out" class="tool icon-only" type="button" title="缩小视图" aria-label="缩小视图"><img src="./icons/zoom_out.png" alt=""></button>
+    </div>
+    <div class="mode-badge" id="mode-badge"><span class="status-dot" aria-hidden="true"></span><span id="mode-name">蓝图模式</span><span class="badge-separator">/</span><span id="mode-detail">自由摆子</span></div>
+    <aside class="status-panel" aria-label="对局信息">
+      <div class="stats" id="stats"></div>
+      <div class="status-caption" id="status-caption">棋盘无限，探索也无限。</div>
+    </aside>
+    <p class="board-help" id="board-help"><span id="action-help">点击 y ≤ 0 的格子，放置或移除棋子</span><span class="gesture-help">拖动平移 · 滚轮 / 双指缩放</span></p>
+    <div class="toolbar other-tools" role="toolbar" aria-label="声音和信息">
+      <button id="sound" class="tool icon-only" type="button" title="关闭声音" aria-label="声音" aria-pressed="true"><img src="./icons/sound.png" alt=""></button>
+      <button id="info" class="tool icon-only" type="button" title="规则与关于" aria-label="规则与关于"><img src="./icons/info.png" alt=""></button>
+    </div>
+    <div class="view-scale" id="view-scale" aria-hidden="true">100%</div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+    <noscript><div class="noscript">请开启浏览器的 JavaScript，以游玩康威跳棋。</div></noscript>
+  </main>
+  <dialog id="confirm-dialog" class="modal confirm-modal" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+    <form method="dialog">
+      <span class="eyebrow">确认操作</span>
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-description"></p>
+      <div class="dialog-actions"><button class="text-button" value="cancel" autofocus>取消</button><button class="solid-button" id="confirm-accept" value="confirm">确认</button></div>
+    </form>
+  </dialog>
+  <dialog id="info-dialog" class="modal info-modal" aria-labelledby="info-title">
+    <button id="close-info" class="close-button" type="button" aria-label="关闭信息页">×</button>
+    <span class="eyebrow">一个简单的规则，一条意外的边界</span>
+    <h2 id="info-title">康威跳棋</h2>
+    <p class="info-subtitle">Conway’s Soldiers</p>
+    <section><h3>从这里开始</h3><p>先在 <strong>y ≤ 0</strong> 的区域自由摆子，再点击「开始跳棋」。你也可以「放满棋子」，从无限填满的下半平面开始。</p>
+      <p>选中棋子，点击亮起的落点。棋子只能沿上、下、左、右跳过一枚相邻棋子，落在紧接着的空格上；被跳过的棋子会被吃掉。每走一步，棋子就少一枚。</p>
+    </section>
+    <section><h3>你能到达第几行？</h3><p>试着把棋子送到 y = 1、2、3、4。康威跳棋的奇妙结论是：无论开局在下方放多少棋子，都无法通过<strong>有限步</strong>合法跳跃抵达 y = 5。即使把下半平面无限填满，也一样。</p></section>
+    <section><h3>操作小贴士</h3><ul><li>电脑：点击格子操作，拖动平移，滚轮缩放。</li><li>手机：轻点格子操作，单指拖动，双指缩放。</li><li>键盘：聚焦棋盘后，用方向键移动光标，空格 / 回车操作，Esc 取消选择；W A S D 平移，+ / − 缩放。</li></ul></section>
+    <footer class="credits"><p>制作 / 图标美术：<strong>真理院七叶</strong></p><p>本游戏使用 GPT-6 Astra 等 AI 工具辅助创建。</p><p>音效：来自 Mixkit</p><ul class="sound-credits"><li>mixkit-game-ball-tap-2073.wav</li><li>mixkit-small-hit-in-a-game-2072.wav</li><li>mixkit-thin-metal-card-deck-shuffle-3175.wav</li></ul><p class="privacy-note">游戏不保存对局或偏好，刷新或关闭页面后即重置。</p></footer>
+  </dialog>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
