@@ -6,6 +6,8 @@
 
 **最新状态（同日 23:35–23:37）：** 用户确认修正 RAM 权限策略后，取消 dry-run 的部署轮次已成功。源站 GET 复核也已确认首页、文章列表、目录跳转及自定义 404 正常。此前 403、空桶 404 和首次写入失败的记录保留为历史；当前状态以本段和第 9 节为准。CDN 正式域名需要独立验收。
 
+**CDN 后续状态（同日 23:58）：** 用户已配置根域 CNAME，截图显示 CDN 正常运行但 HTTPS 未开启。实测 `http://nanoka.tv/` 为 200，`https://nanoka.tv/` TLS 握手失败，OSS 直连 HTTPS 为 200。因此当前 CDN 验收的阻塞是边缘 HTTPS 尚未启用；修复顺序及海外访问说明见第 10 节。
+
 **后续进展（同日）：** 用户确认 RAM 信任策略的两处错误仅为笔记错误，已开启 Bucket 公共读，GitHub dry-run 已成功。真实上传首批 9 个文件全部失败；用户随后提供的实际 `NanokaBlogDeployOSS` 权限策略中仍保留 `<BUCKET_NAME>`，因此未授权目标桶。应按下方实际桶名修正 Resource、保存为生效默认版本，并确认策略绑定 `nanoka-blog-deployer`。后续匿名 GET 已从 403 变成 `404 NoSuchKey`，符合首页尚未成功上传的状态；这不代表真实上传或整站验收已通过。
 
 ## 1. 已修正的工作流
@@ -212,3 +214,43 @@ curl.exe -sS -D - -o NUL https://oss-origin.nanoka.tv/does-not-exist-test/
 顺序预期为 **200 HTML、200 HTML、302 → /posts/、404 HTML**。`-D -` 打印响应头，`-o NUL` 丢弃正文，默认请求仍为 GET。需要检查具体对象的元数据时，可以对 `/index.html`、`/posts/index.html` 等完整对象路径使用 `-I`。探活也宜使用 GET 首页，或 HEAD 具体的 `/index.html`。
 
 现有部署验收脚本使用 GET，保留严格的状态/正文校验。阿里云 CDN 对静态缓存资源默认将客户端 HEAD 转成 GET 回源，因此不能从源站 HEAD 推断 CDN 会给读者返回同样结果；正式 CDN 域名仍要单独检查。[CDN 官方说明](https://help.aliyun.com/zh/cdn/product-overview/limits)
+
+## 10. CDN HTTP 可访问、HTTPS 验收连接失败
+
+2026-09-16 23:58（北京时间）实测：
+
+| 目标 | 结果 |
+| --- | --- |
+| `http://nanoka.tv/` | HTTP 200，Tengine，正确 HTML；尚未跳转 HTTPS |
+| `https://nanoka.tv/` | TLS 握手失败；Node 的底层错误码为 `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE` |
+| `https://oss-origin.nanoka.tv/` | HTTP 200，AliyunOSS，正确 HTML |
+
+用户的 CDN 截图明确显示 **HTTPS：未开启**。CNAME 正确和域名“正常运行”并不代表已开启 HTTPS。GitHub 工作流固定以 `https://$CDN_DOMAIN` 验收；此时连接在获取 HTTP 响应前就失败，所以所有页面和资源都报 TypeError，而不是某个文件的 404 或缓存不一致。[官方 HTTPS 排障](https://help.aliyun.com/zh/cdn/user-guide/https-troubleshooting-guide)
+
+修复步骤：
+
+1. 阿里云 **CDN → 域名管理 → nanoka.tv → 管理 → HTTPS 配置 → HTTPS 证书 → 修改配置**。
+2. 开启 **HTTPS 安全加速**，选择已有、有效且覆盖 `nanoka.tv` 的证书。之前给正式域名申请的证书可以继续用于这里；只覆盖 `oss-origin.nanoka.tv` 的证书不能替代它。
+3. 保存，等待 CDN 配置下发，先确认 `https://nanoka.tv/` 能正常返回网页。
+4. 同页进入 **协议重定向**，设为 **HTTP → HTTPS**，再确认 HTTP 返回跳向 HTTPS 的重定向。
+5. 重新 Run workflow → main，设置 `dry_run=false`、`verify_cdn=true`。保持 `SITE_URL=https://nanoka.tv` 和 HTTPS 验收。
+6. 另行保持 CDN → OSS 的 HTTPS 回源、Host/SNI 配置与既定方案一致；它与本次浏览器 → CDN 的 HTTPS 开关是独立配置。
+
+OSS 上部署证书不会自动启用 CDN 对外 HTTPS。有覆盖正式域名的有效证书时，可在 CDN 选择已有证书，无需为本问题先申请新证书。[配置 CDN HTTPS 证书](https://help.aliyun.com/zh/cdn/user-guide/configure-an-ssl-certificate)、[协议重定向](https://help.aliyun.com/zh/cdn/user-guide/configure-url-redirection)、[OSS HTTPS 与 CDN 的区别](https://help.aliyun.com/zh/oss/user-guide/access-oss-by-https-protocol)
+
+```powershell
+curl.exe -sS -D - -o NUL https://nanoka.tv/
+curl.exe -sS -D - -o NUL http://nanoka.tv/
+```
+
+最终预期：第一条 200 HTML；第二条重定向到 `https://nanoka.tv/`。
+
+### 加速区域与海外用户
+
+**仅中国内地加速不等于只允许中国内地用户访问。** 官方说明该选项下全球用户均由中国内地节点服务，海外用户会调度到华东电信节点；因此不能把 GitHub runner 位于海外直接当成本次连接失败的原因。跨境访问可能延迟更高，具体链路质量需实测。[加速区域官方说明](https://help.aliyun.com/zh/cdn/user-guide/change-the-accelerated-region)
+
+如果希望兼顾境内和海外读者，可在 HTTPS 修复后把加速区域改为 **全球**，让用户择优调度至就近节点。仍可保留上海 OSS 作为源站；境外节点未命中缓存时仍需跨境回源，所以“全球”并不保证每次请求都没有跨境延迟。这是海外体验优化，不能替代启用 CDN HTTPS。[海外访问加速说明](https://help.aliyun.com/zh/cdn/use-alibaba-cloud-cdn-to-accelerate-user-access-in-regions-outside-the-chinese-mainland)
+
+### 验收日志改进
+
+原脚本仅输出 fetch 的外层 TypeError，导致 TLS、DNS、连接错误无法区分。现在会输出底层机器错误码和对应提示，同时继续省略可能含敏感信息的错误正文、请求 URL 和请求头；19 项验收脚本测试通过。对当前站点已复核能输出上述 TLS 握手错误码。此代码改动只改善排错，开启 CDN HTTPS 仍需在云端完成。

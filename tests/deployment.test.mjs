@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { createDeploymentChecks, validateOrigin, verifyDeployment, verifyWithRetries } from '../scripts/verify-deployment.mjs';
+import { createDeploymentChecks, describeFetchFailure, validateOrigin, verifyDeployment, verifyWithRetries } from '../scripts/verify-deployment.mjs';
 
 const origin = 'https://nanoka.example';
 let directory;
@@ -166,4 +166,31 @@ test('rejects HTTP targets, embedded credentials, and non-origin URLs before fet
     assert.throws(() => validateOrigin(value));
   }
   assert.equal(validateOrigin(`${origin}/`), origin);
+});
+
+test('TLS transport failure reports its underlying code without leaking request details', async () => {
+  const cause = Object.assign(new Error('private-token https://user:password@private.example/?token=private-token'), {
+    code: 'ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE',
+  });
+  const result = await verifyDeployment(origin, {
+    checks: [checks[0]],
+    fetchImpl: async () => { throw new TypeError('fetch failed with private-token', { cause }); },
+  });
+  assert.equal(result.ok, false);
+  const message = result.failures[0].errors[0];
+  assert.match(message, /ERR_SSL_SSL\/TLS_ALERT_HANDSHAKE_FAILURE/);
+  assert.match(message, /check CDN HTTPS is enabled/);
+  assert.doesNotMatch(message, /private-token|private\.example|password/);
+});
+
+test('DNS and aggregate connection errors remain distinguishable and cyclic causes are bounded', () => {
+  const dns = new TypeError('fetch failed', { cause: Object.assign(new Error(), { code: 'ENOTFOUND' }) });
+  assert.match(describeFetchFailure(dns), /ENOTFOUND.*DNS resolution failed/);
+  const connections = new AggregateError([
+    Object.assign(new Error(), { code: 'ECONNREFUSED' }),
+    Object.assign(new Error(), { code: 'ETIMEDOUT' }),
+  ]);
+  connections.cause = connections;
+  assert.match(describeFetchFailure(new TypeError('fetch failed', { cause: connections })), /ECONNREFUSED; ETIMEDOUT.*Connection failed/);
+  assert.equal(describeFetchFailure(new TypeError('sensitive details')), 'GET failed (TypeError).');
 });

@@ -91,6 +91,36 @@ function withinSignal(promise, signal) {
   });
 }
 
+export function describeFetchFailure(error) {
+  // Node fetch wraps TLS/DNS/socket errors in TypeError. Log only machine error
+  // codes, never error.message, request URLs, headers, or certificate contents.
+  const codes = new Set();
+  const seen = new Set();
+  const queue = [error];
+  while (queue.length && seen.size < 12) {
+    const item = queue.shift();
+    if (!item || typeof item !== 'object' || seen.has(item)) continue;
+    seen.add(item);
+    if (typeof item.code === 'string' && item.code.length <= 96 &&
+        /^(?:ERR_(?:SSL|TLS)_[A-Z0-9_/]+|UND_ERR_[A-Z_]+|E[A-Z0-9_]+|CERT_[A-Z_]+|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_[A-Z_]+)$/.test(item.code)) {
+      codes.add(item.code);
+    }
+    if (item.cause) queue.push(item.cause);
+    if (Array.isArray(item.errors)) queue.push(...item.errors.slice(0, 8));
+  }
+  const name = ['TypeError', 'Error', 'AggregateError'].includes(error?.name) ? error.name : 'Error';
+  const details = [...codes];
+  let hint = '';
+  if (details.some((code) => /SSL|TLS|CERT|UNABLE_TO_(?:VERIFY|GET_ISSUER)/.test(code))) {
+    hint = ' TLS negotiation or certificate validation failed; check CDN HTTPS is enabled and its certificate covers the requested hostname.';
+  } else if (details.some((code) => ['ENOTFOUND', 'EAI_AGAIN'].includes(code))) {
+    hint = ' DNS resolution failed; check the domain CNAME and DNS propagation.';
+  } else if (details.some((code) => ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(code))) {
+    hint = ' Connection failed; check the HTTPS listener and network reachability.';
+  }
+  return `GET failed (${[name, ...details].join('; ')}).${hint}`;
+}
+
 async function checkResponse(origin, check, { fetchImpl, requestTimeoutMs, signal }) {
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(new Error('GET timeout')), requestTimeoutMs);
@@ -136,7 +166,7 @@ async function checkResponse(origin, check, { fetchImpl, requestTimeoutMs, signa
     return errors;
   } catch (error) {
     // Keep response bodies and error URLs out of CI logs.
-    return [requestSignal.aborted ? 'GET timed out or the overall verification deadline expired' : `GET failed (${error.name || 'Error'})`];
+    return [requestSignal.aborted ? 'GET timed out or the overall verification deadline expired' : describeFetchFailure(error)];
   } finally {
     clearTimeout(timer);
   }
@@ -171,6 +201,7 @@ export async function verifyWithRetries(origin, {
     throw new Error('Verification duration must be 1–600000 ms and retry interval must be nonnegative.');
   }
   const checks = options.checks ?? await createDeploymentChecks(options.distDir);
+  log(`Verifying HTTPS release at ${origin} (up to ${maxDurationMs / 1000}s).`);
   const deadline = Date.now() + maxDurationMs;
   const signal = AbortSignal.any([AbortSignal.timeout(maxDurationMs), ...(options.signal ? [options.signal] : [])]);
   let result;
