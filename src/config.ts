@@ -1,6 +1,6 @@
 import avatar from '../assets/nanoka_avatar_512.jpg';
 import conwayCover from '../assets/conway_checker_cover.png';
-import conway3dCover from '../assets/conway-soldiers-3d-cover.svg';
+import conway3dCover from '../assets/conway-soldiers-3d-cover.png';
 import { conwayPath, conway3dPath } from '../config/redirects.mjs';
 
 export const profile = {
