@@ -23,7 +23,17 @@ function toast(message) {
 }
 function clearCursor() { renderer.hover = null; renderer.cursor = null; keyboardCursor = null; }
 function updateView() {
-  $('plane-badge').textContent = `XZ 工作面 · Y = ${camera.slice}`;
+  const axis = camera.normalLabel;
+  $('plane-badge').textContent = `${camera.plane} 工作面 · ${axis} = ${camera.slice}`;
+  for (const plane of ['XZ', 'XY']) $('plane-' + plane.toLowerCase()).setAttribute('aria-pressed', String(camera.plane === plane));
+  $('slice-axis').textContent = axis;
+  $('slice-value').setAttribute('aria-label', `当前 ${axis} 切片坐标`);
+  $('slice-range').setAttribute('aria-label', `滑动切换附近 ${axis} 切片`);
+  $('slice-prev').setAttribute('aria-label', `上一切片 ${axis} 减一`);
+  $('slice-next').setAttribute('aria-label', `下一切片 ${axis} 加一`);
+  $('legend-negative-label').textContent = `${axis}− 侧`;
+  $('legend-positive-label').textContent = `${axis}+ 侧`;
+  canvas.setAttribute('aria-label', `三维棋盘。点击当前 ${camera.plane} 工作面摆子或选子，再点任意可见方向的落点跳跃；灰色落点被遮挡。方向键移动 ${camera.plane} 光标，空格操作；Q E 切换 ${axis} 切片，V 切换 XZ / XY，F 正视，H 归位；W A S D 平移，加减号缩放。`);
   $('slice-value').value = camera.slice;
   if (!slidingSlice && Math.abs(camera.slice - rangeCenter) > 5) rangeCenter = camera.slice;
   const min = Math.max(-CAMERA_LIMIT,rangeCenter - 6), max = Math.min(CAMERA_LIMIT,rangeCenter + 6);
@@ -33,14 +43,26 @@ function updateView() {
   $('depth').value = camera.depth;
   $('view-scale').textContent = `${Math.round(camera.zoom * 100)}%`;
   $('zoom-in').disabled = camera.zoom >= MAX_ZOOM; $('zoom-out').disabled = camera.zoom <= MIN_ZOOM;
-  $('edge-warning').hidden = camera.pickable;
-  $('edge-hint').textContent = game.mode === 'blueprint' ? '侧视：请正视后摆子' : '侧视：仍可点击可见落点';
+  const edgeOn = !camera.pickable, blueprint = game.mode === 'blueprint';
+  $('board-wrap').classList.toggle('is-edge-on', edgeOn);
+  $('edge-warning').hidden = !edgeOn;
+  canvas.setAttribute('aria-describedby', edgeOn ? 'edge-warning' : '');
+  const hint = blueprint ? '视角过平，暂停摆子' : '视角过平，暂停选子';
+  const detail = game.selected ? '仍可点击可见落点或方向按钮' : '拖动旋转，或点「正视」恢复';
+  // Avoid replacing live-region text on every orbit frame when unchanged.
+  if ($('edge-hint').textContent !== hint) $('edge-hint').textContent = hint;
+  if ($('edge-detail').textContent !== detail) $('edge-detail').textContent = detail;
+  $('action-help').textContent = edgeOn
+    ? game.selected ? '可点击可见落点 · 旋转或正视后选子' : `视角过平 · 旋转或正视后${blueprint ? '摆子' : '选子'}`
+    : blueprint ? '点击格点摆子 · Z ≤ 0' : game.selected
+      ? game.board.movesFrom(...game.selected).length ? '点击落点跳跃 · 灰色落点暂不可点' : '暂无可用落点'
+      : '选择当前工作面的棋子';
   for (const [id, offset] of [['legend-negative', -1], ['legend-positive', 1]]) {
     const style = neighborStyle(offset, camera);
     $(id).classList.toggle('is-far', style.far);
     $(id).style.borderColor = style.color;
   }
-  $('neighbor-legend').setAttribute('aria-label', `邻层：蓝色为 Y− 侧，紫色为 Y+ 侧；虚线表示距摄像机较远的一侧`);
+  $('neighbor-legend').setAttribute('aria-label', `邻层：蓝色为 ${axis}− 侧，紫色为 ${axis}+ 侧；虚线表示距摄像机较远的一侧`);
   renderer.request();
 }
 function update() {
@@ -65,26 +87,30 @@ function update() {
   let moveCount = 0;
   for (const button of jumpButtons) {
     const delta = button.dataset.direction.split(',').map(Number), to = game.selected?.map((v,i)=>v+delta[i]);
-    button.style.setProperty('--axis-color', TARGET_COLORS['XYZ'[delta.findIndex(v => v !== 0)]]);
+    const axis = delta.findIndex(v => v !== 0), positive = delta[axis] > 0;
+    button.style.setProperty('--axis-color', TARGET_COLORS['XYZ'[axis]]);
     const legal = !blueprint && to && game.board.canMove(game.selected,to);
     button.disabled = !legal;
-    button.title = legal ? `跳至 ${coords(to)}${delta[1] ? autoFollow ? '，自动跟随' : '，保持当前切片' : ''}` : '此方向暂时不能跳跃';
+    const arrow = axis === 0 ? positive ? '→' : '←' : axis === camera.verticalAxis ? positive ? '↑' : '↓' : positive ? '↗' : '↙';
+    button.querySelector('b').textContent = `${positive ? '+' : '−'}${'XYZ'[axis]} ${arrow}`;
+    button.title = legal ? `跳至 ${coords(to)}${delta[camera.normalAxis] ? autoFollow ? '，自动跟随' : '，保持当前切片' : ''}` : '此方向暂时不能跳跃';
     button.setAttribute('aria-label', `${button.querySelector('b').textContent}，${button.title}`);
     if (legal) moveCount++;
   }
   $('selection-help').textContent = game.selected ? moveCount ? `${moveCount} 个方向 · 灰色落点被遮挡，可旋转视角或使用按钮` : '暂无可用落点' : '选择棋子后，点击落点或方向按钮';
-  $('action-help').textContent = blueprint ? '点击格点摆子 · Z ≤ 0' : game.selected ? moveCount ? '点击落点跳跃 · 灰色落点暂不可点' : '暂无可用落点' : '选择当前工作面的棋子';
   updateView();
 }
 function followPoint(point, forceCenter = false) {
-  camera.slice = point[1];
+  // Do not realign the camera's normal coordinate for a move on the same
+  // slice: a plane switch may intentionally leave its target off that plane.
+  if (camera.slice !== point[camera.normalAxis]) camera.slice = point[camera.normalAxis];
   const p = camera.screen(...point), b = camera.bounds();
-  if (forceCenter || point[0] < b.minX || point[0] > b.maxX || point[2] < b.minZ || point[2] > b.maxZ || !camera.inside(...p) || p[0] < 65 || p[0] > camera.width - 65 || p[1] < 55 || p[1] > camera.height - 65) camera.center = [point[0],point[2]];
+  if (forceCenter || !camera.inBounds(point, b) || !camera.inside(...p) || p[0] < 65 || p[0] > camera.width - 65 || p[1] < 55 || p[1] > camera.height - 65) camera.target = [...point];
 }
 function afterMove(to, previousPeak) {
   sounds.play('move'); if (autoFollow) followPoint(to); clearCursor();
   if (game.peak > previousPeak && game.peak > 0) toast(`抵达第 ${game.peak} 层${game.peak === 7 ? '，触及三维的探索边界！' : '！'}`);
-  announce(`已跳到 ${coords(to)}，当前 ${game.steps} 步，工作切片 Y=${camera.slice}。`);
+  announce(`已跳到 ${coords(to)}，当前 ${game.steps} 步，工作切片 ${camera.normalLabel}=${camera.slice}。`);
 }
 function tap(x,y,z) {
   if (blocked()) return;
@@ -109,8 +135,15 @@ const gestures = new BoardGesture(camera, { mode:()=>dragMode, tap, pick:(x,y)=>
 function setSlice(value) {
   if (blocked()) return;
   if (!isCoordinate(value) || Math.abs(value) > CAMERA_LIMIT) { toast(`请输入 ±${format(CAMERA_LIMIT)} 以内的整数切片坐标`); updateView(); return; }
+  if (value === camera.slice) { updateView(); return; }
   gestures.cancel(); camera.slice = value; game.selected = null; clearCursor(); update();
-  announce(`工作切片 Y=${camera.slice}。`);
+  announce(`工作切片 ${camera.normalLabel}=${camera.slice}。`);
+}
+function setPlane(plane) {
+  if (blocked() || plane === camera.plane) return;
+  gestures.cancel(); camera.setPlane(plane, game.selected); clearCursor();
+  slidingSlice = false; rangeCenter = camera.slice; update();
+  announce(`已切换为 ${plane} 工作面，${camera.normalLabel}=${camera.slice}。视角保持不变${game.selected ? '，保留选中棋子' : ''}。${camera.pickable ? '' : '当前接近侧视，可旋转或按 F 正视。'}`);
 }
 function askConfirmation(title, description, label, action) {
   if (blocked()) return;
@@ -157,6 +190,7 @@ $('auto-follow').addEventListener('click',()=>{
 });
 $('slice-prev').addEventListener('click',()=>setSlice(camera.slice-1));
 $('slice-next').addEventListener('click',()=>setSlice(camera.slice+1));
+for (const plane of ['XZ', 'XY']) $('plane-' + plane.toLowerCase()).addEventListener('click',()=>setPlane(plane));
 $('slice-value').addEventListener('change',()=>setSlice($('slice-value').value.trim() ? Number($('slice-value').value) : NaN));
 $('slice-range').addEventListener('input',()=>{slidingSlice=true;setSlice(Number($('slice-range').value));});
 $('slice-range').addEventListener('change',()=>{slidingSlice=false;updateView();});
@@ -200,14 +234,19 @@ window.addEventListener('blur',()=>gestures.cancel());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)gestures.cancel();});
 canvas.addEventListener('keydown',e=>{
   if(blocked()||e.ctrlKey||e.metaKey||e.altKey)return;
-  const key=e.key.toLowerCase(), arrows={arrowleft:[-1,0,0],arrowright:[1,0,0],arrowup:[0,0,1],arrowdown:[0,0,-1]};
+  const key=e.key.toLowerCase(), vertical=camera.verticalAxis===2?[0,0,1]:[0,1,0];
+  const arrows={arrowleft:[-1,0,0],arrowright:[1,0,0],arrowup:vertical,arrowdown:vertical.map(v=>-v)};
   if(arrows[key]||key===' '||key==='enter'){
-    e.preventDefault();const cursor=keyboardCursor??[Math.round(camera.center[0]),camera.slice,Math.round(camera.center[1])];
+    e.preventDefault();const cursor=keyboardCursor??camera.point(Math.round(camera.center[0]),Math.round(camera.center[1]));
     if(arrows[key]) { const next=cursor.map((v,i)=>v+arrows[key][i]);keyboardCursor=next.every(v=>Math.abs(v)<=CAMERA_LIMIT)?next:cursor; }
-    else { tap(...cursor);keyboardCursor=cursor; }
-    followPoint(keyboardCursor);renderer.cursor=keyboardCursor;
+    else { const steps=game.steps;tap(...cursor);if(game.steps===steps)keyboardCursor=cursor; }
+    // A keyboard jump obeys the same follow setting as canvas and buttons.
+    // afterMove clears the cursor; restore it only for non-move actions.
+    if(arrows[key]) followPoint(keyboardCursor);
+    renderer.cursor=keyboardCursor;
     if(arrows[key]) announce(`光标 ${coords(keyboardCursor)}，${game.board.has(...keyboardCursor)?'有棋子':'空格'}。`);
-  }else if(['q','e','pageup','pagedown'].includes(key)){e.preventDefault();setSlice(camera.slice+(['q','pageup'].includes(key)?-1:1));return;}
+  }else if(key==='v'){e.preventDefault();setPlane(camera.plane==='XZ'?'XY':'XZ');return;}
+  else if(['q','e','pageup','pagedown'].includes(key)){e.preventDefault();setSlice(camera.slice+(['q','pageup'].includes(key)?-1:1));return;}
   else if(['w','a','s','d'].includes(key)){e.preventDefault();const p={w:[0,1],a:[1,0],s:[0,-1],d:[-1,0]}[key];camera.pan(p[0]*camera.cell,p[1]*camera.cell);}
   else if(['+','=','-','_'].includes(key)){e.preventDefault();camera.zoomAt(['+','='].includes(key)?1.2:1/1.2,...camera.midpoint);}
   else if(key==='f'){e.preventDefault();camera.face();}
@@ -222,7 +261,7 @@ new ResizeObserver(resize).observe(canvas);window.addEventListener('resize',resi
 resize();update();
 
 registerGameTools({
-  snapshot:()=>({mode:game.mode,full:game.board.full,differences:[...game.board.differences],steps:game.steps,peak:game.peak,selected:game.selected?[...game.selected]:null,...game.board.stats(),pieces:game.board.full?'infinite':game.board.differences.size,view:{slice:camera.slice,depth:camera.depth,center:[...camera.center],zoom:camera.zoom,yaw:camera.yaw,pitch:camera.pitch,pickable:camera.pickable,autoFollow}}),
+  snapshot:()=>({mode:game.mode,full:game.board.full,differences:[...game.board.differences],steps:game.steps,peak:game.peak,selected:game.selected?[...game.selected]:null,...game.board.stats(),pieces:game.board.full?'infinite':game.board.differences.size,view:{plane:camera.plane,slice:camera.slice,depth:camera.depth,center:[...camera.center],target:[...camera.target],zoom:camera.zoom,yaw:camera.yaw,pitch:camera.pitch,pickable:camera.pickable,autoFollow}}),
   edit:cells=>{
     if(blocked()||game.mode!=='blueprint')throw new Error('需要在未打开弹窗的蓝图模式编辑。');
     if(!Array.isArray(cells)||cells.length>1000||[...cells].some(p=>!Array.isArray(p)||p.length!==3||![p[0],p[1],p[2]].every(isCoordinate)||p[2]>0))throw new Error('需要最多1000个三维整数坐标，且 Z≤0。');

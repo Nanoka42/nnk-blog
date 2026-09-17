@@ -13,11 +13,13 @@ export const TARGET_COLORS = Object.freeze({
   X: '#efb58f', Y: '#9bcafa', Z: '#a0e3c1',
 });
 
-// Color identifies world Y; outline identifies camera depth. Compare each
+// Color identifies the signed normal coordinate; outline identifies depth. Compare each
 // ghost with its corresponding site on the active plane, so orbiting through
 // the back of the board swaps solid/dashed without swapping the world colors.
 export const neighborStyle = (offset, camera = {}) => {
-  const far = Math.cos(camera.pitch ?? 0) * Math.cos(camera.yaw ?? 0) * offset < -1e-7;
+  const normalDepth = camera.normalDepth ?? (camera.plane === 'XY' ? Math.sin(camera.pitch ?? 0)
+    : Math.cos(camera.pitch ?? 0) * Math.cos(camera.yaw ?? 0));
+  const far = normalDepth * offset < -1e-7;
   return { color: offset < 0 ? '#86bff1' : '#d1a5ed', dash: far ? [3, 3] : [],
     opacity: Math.abs(offset) === 1 ? .56 : .32, far };
 };
@@ -79,7 +81,7 @@ export class Renderer {
     const c = this.camera, { board } = this.game;
     if (!c.inside(px, py)) return null;
     const distance = p => Math.hypot(px - p[0], py - p[1]);
-    // Explicit destinations work on every Y plane, including side views where
+    // Explicit destinations work on both planes, including side views where
     // inverse-plane picking is unsafe. A gray target consumes the click too.
     for (const target of this.targets().reverse()) {
       if (distance(target.p) <= target.radius + 1) return target.occluded ? null : target.point;
@@ -92,17 +94,18 @@ export class Renderer {
     if (board.has(...point) && activeDistance <= pieceRadius(c.cell) + .5) return point;
     if (activeDistance <= gridRadius(c.cell) + 2) return point;
     if (!c.depth) return point;
-    const world = c.world(px, py), b = c.bounds();
-    const xShift = Math.tan(c.yaw), zShift = Math.tan(c.pitch) / Math.cos(c.yaw);
-    // Invert the pointer onto each visible Y plane. Since picking is disabled
+    const b = c.bounds(), minV = b[`min${c.verticalLabel}`], maxV = b[`max${c.verticalLabel}`];
+    // Invert the pointer onto each visible neighboring plane. Since picking is disabled
     // for strongly foreshortened planes, these nearest 3×3 sites contain every
     // possible ghost silhouette: at most 36 candidates, even in a full world.
-    for (let dy = -c.depth; dy <= c.depth; dy++) {
-      if (dy === 0) continue;
-      const gx = Math.round(world[0] + xShift * dy), gz = Math.round(world[2] + zShift * dy);
-      for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) {
-        if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
-        const ghost = [x, c.slice + dy, z];
+    for (let offset = -c.depth; offset <= c.depth; offset++) {
+      if (offset === 0) continue;
+      const world = c.world(px, py, c.slice + offset);
+      if (!world) continue;
+      const gx = Math.round(world[0]), gv = Math.round(world[c.verticalAxis]);
+      for (let x = gx - 1; x <= gx + 1; x++) for (let v = gv - 1; v <= gv + 1; v++) {
+        if (x < b.minX || x > b.maxX || v < minV || v > maxV) continue;
+        const ghost = c.point(x, v, c.slice + offset);
         if (distance(c.screen(...ghost)) <= ghostRadius(c.cell) + 1.5 && board.has(...ghost)) return null;
       }
     }
@@ -140,53 +143,69 @@ export class Renderer {
     const nodes = [];
     // Occupancy is queried only for the finite visible window. The logical
     // half-space may be infinite; rendering cost never depends on that fact.
-    for (let y = c.slice - c.depth; y <= c.slice + c.depth; y++) {
-      const active = y === c.slice;
-      for (let z = b.minZ; z <= b.maxZ; z++) for (let x = b.minX; x <= b.maxX; x++) {
-        const point = [x, y, z], p = c.screen(...point);
+    const minV = b[`min${c.verticalLabel}`], maxV = b[`max${c.verticalLabel}`];
+    for (let slice = c.slice - c.depth; slice <= c.slice + c.depth; slice++) {
+      const active = slice === c.slice;
+      for (let v = minV; v <= maxV; v++) for (let x = b.minX; x <= b.maxX; x++) {
+        const point = c.point(x, v, slice), p = c.screen(...point);
         if (p[0] < -30 || p[0] > c.width + 30 || p[1] < -30 || p[1] > c.height + 30) continue;
         const occupied = board.has(...point);
         if (occupied || active) nodes.push({ point, p, active, occupied, selected: same(this.game.selected, point) });
-        else if (c.cell > 23 && z <= 0) nodes.push({ point, p, active: false, occupied: false });
+        else if (c.cell > 23 && point[2] <= 0) nodes.push({ point, p, active: false, occupied: false });
       }
     }
     nodes.sort((a, b) => a.p[2] - b.p[2]);
     for (const node of nodes) this.node(node);
     this.selection();
-    if (this.hover && this.hover[1] === c.slice && c.pickable) {
+    if (this.hover && this.hover[c.normalAxis] === c.slice && c.pickable) {
       const editable = this.game.mode !== 'blueprint' || this.hover[2] <= 0;
       if (editable) this.focus(this.hover, '#b1e7db85', false);
     }
-    if (this.cursor && this.cursor[1] === c.slice) this.focus(this.cursor, '#d9fff0', false);
+    if (this.cursor && this.cursor[c.normalAxis] === c.slice) this.focus(this.cursor, '#d9fff0', false);
     this.fadeEdges();
     ctx.restore();
     this.labels(b);
     this.triad();
   }
   grid(b) {
-    const c = this.camera, y = c.slice, { minX, maxX, minZ, maxZ } = b;
-    const x0 = minX - .45, x1 = maxX + .45, z0 = minZ - .45, z1 = maxZ + .45;
-    this.polygon([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], '#13212448');
-    if (minZ <= 0) this.polygon([[x0, y, z0], [x1, y, z0], [x1, y, Math.min(.4, z1)], [x0, y, Math.min(.4, z1)]], '#3d877610');
+    const c = this.camera, { minX, maxX } = b;
+    const minV = b[`min${c.verticalLabel}`], maxV = b[`max${c.verticalLabel}`];
+    const x0 = minX - .45, x1 = maxX + .45, v0 = minV - .45, v1 = maxV + .45;
+    const corners = [c.point(x0, v0), c.point(x1, v0), c.point(x1, v1), c.point(x0, v1)];
+    this.polygon(corners, '#13212448');
+    if (c.plane === 'XZ' && minV <= 0) {
+      this.polygon([c.point(x0, v0), c.point(x1, v0), c.point(x1, Math.min(.4, v1)), c.point(x0, Math.min(.4, v1))], '#3d877610');
+    } else if (c.plane === 'XY') {
+      // Z is constant across this whole plane: the start/goal heights are plane
+      // attributes, never horizontal Y rails masquerading as world Z levels.
+      const fill = c.slice <= 0 ? '#3d877610' : c.slice === 7 ? '#d3af620d' : c.slice >= 8 ? '#ad858a09' : null;
+      const stroke = c.slice === 0 ? '#89d9bc65' : c.slice === 7 ? '#d3af6259' : c.slice === 8 ? '#ad858a40' : null;
+      if (fill || stroke) this.polygon(corners, fill, stroke);
+    }
     // Sparse rails describe the third dimension without putting a cage around
     // the board. Ghost layers never contribute an interactive grid.
-    if (c.depth && c.yaw !== 0 && minZ <= 0 && maxZ >= 0) {
-      for (const dy of [-c.depth, c.depth]) {
-        const style = neighborStyle(dy, c);
-        this.worldLine([x0, y + dy, 0], [x1, y + dy, 0], `${style.color}29`, 1, style.dash);
-        for (const x of [minX, 0, maxX]) if (x >= minX && x <= maxX) this.worldLine([x, y, 0], [x, y + dy, 0], `${style.color}24`, 1, [2, 5]);
+    if (c.depth && Math.abs(c.normalDepth) < .9999 && minV <= 0 && maxV >= 0) {
+      for (const offset of [-c.depth, c.depth]) {
+        const style = neighborStyle(offset, c), slice = c.slice + offset;
+        this.worldLine(c.point(x0, 0, slice), c.point(x1, 0, slice), `${style.color}29`, 1, style.dash);
+        for (const x of [minX, 0, maxX]) if (x >= minX && x <= maxX) this.worldLine(c.point(x, 0), c.point(x, 0, slice), `${style.color}24`, 1, [2, 5]);
       }
     }
-    for (let x = minX; x <= maxX; x++) this.worldLine([x, y, z0], [x, y, z1], x === 0 ? '#8aaca429' : '#8aaca412', x === 0 ? 1 : .65);
-    for (let z = minZ; z <= maxZ; z++) {
-      const color = z === 0 ? '#89d9bc65' : z === 7 ? '#d3af6259' : z === 8 ? '#ad858a28' : z < 0 ? '#9acbb11a' : '#b5ced414';
-      this.worldLine([x0, y, z], [x1, y, z], color, z === 0 ? 1.5 : .75, z === 7 ? [5, 7] : z === 8 ? [2, 7] : []);
+    for (let x = minX; x <= maxX; x++) this.worldLine(c.point(x, v0), c.point(x, v1), x === 0 ? '#8aaca429' : '#8aaca412', x === 0 ? 1 : .65);
+    for (let v = minV; v <= maxV; v++) {
+      const heightRail = c.plane === 'XZ';
+      const color = heightRail ? v === 0 ? '#89d9bc65' : v === 7 ? '#d3af6259' : v === 8 ? '#ad858a28' : v < 0 ? '#9acbb11a' : '#b5ced414'
+        : v === 0 ? '#89d9bc65' : '#b5ced414';
+      // Both work planes give their current X reference rail priority over
+      // the thinner, translucent rails on neighboring slices.
+      this.worldLine(c.point(x0, v), c.point(x1, v), color, v === 0 ? 1.5 : .75,
+        heightRail && v === 7 ? [5, 7] : heightRail && v === 8 ? [2, 7] : []);
     }
   }
   node({ point, p, active, occupied, selected }) {
     const c = this.camera, ctx = this.ctx, [px, py] = p;
     if (!active) {
-      const style = neighborStyle(point[1] - c.slice, c);
+      const style = neighborStyle(point[c.normalAxis] - c.slice, c);
       ctx.save(); ctx.globalAlpha = style.opacity * (occupied ? 1 : .72);
       ctx.setLineDash(occupied ? style.dash : style.dash.length ? [1.5, 2] : []);
       this.circle(px, py, occupied ? ghostRadius(c.cell) : clamp(c.cell * .056, 1.8, 3.1),
@@ -252,39 +271,51 @@ export class Renderer {
   }
   labels(b) {
     const c = this.camera, ctx = this.ctx;
+    // Leave the upper area clear for the DOM picking warning in side views.
     if (!c.pickable) return;
+    if (c.plane === 'XY') {
+      const description = c.slice === 0 ? '起始边界' : c.slice < 0 ? '可摆子区域'
+        : c.slice === 7 ? '有限步可达' : c.slice >= 8 ? '不可到达' : '向第 7 层推进';
+      const color = c.slice <= 0 ? '#a0d8c2' : c.slice < 8 ? '#d8b775' : '#8e7c82';
+      this.chip(`Z = ${c.slice} · ${description}`, 18, 16, color, c.width < 500 ? 9 : 10);
+    }
+    const minV = b[`min${c.verticalLabel}`], maxV = b[`max${c.verticalLabel}`];
     const labelX = clamp(c.world(42, c.midpoint[1])[0], b.minX, b.maxX);
     ctx.font = `10px ${FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     const step = labelStep(35 / c.cell);
-    for (let z = Math.ceil(b.minZ / step) * step; z <= b.maxZ; z += step) {
-      if (z === 0 || z === 7 || z === 8) continue;
-      const [x, y] = c.screen(labelX, c.slice, z);
-      if (x > 25 && x < c.width - 25 && y > 44 && y < c.height - 62) { ctx.fillStyle = '#66837f'; ctx.fillText(`${z > 0 ? '+' : ''}${z}`, x - 14, y); }
+    for (let v = Math.ceil(minV / step) * step; v <= maxV; v += step) {
+      if (c.plane === 'XZ' && (v === 0 || v === 7 || v === 8)) continue;
+      const [x, y] = c.screen(...c.point(labelX, v));
+      if (x > 25 && x < c.width - 25 && y > 44 && y < c.height - 62) {
+        ctx.fillStyle = '#66837f'; ctx.fillText(`${c.verticalLabel} ${v > 0 ? '+' : ''}${v}`, x - 14, y);
+      }
     }
-    for (const [z, text, color] of [[0, 'Z = 0 · 起始边界', '#a0d8c2'], [7, '+7 · 有限步可达', '#d8b775'], [8, '+8 · 不可到达', '#8e7c82']]) {
-      if (z < b.minZ || z > b.maxZ) continue;
-      const desiredX = z === 0 ? 32 : Math.max(32, c.width - 202);
-      const railX = clamp(c.world(desiredX, c.midpoint[1])[0], b.minX, b.maxX);
-      const [x, y] = c.screen(railX, c.slice, z);
-      this.chip(text, Math.max(12, x - 8), y - 27, color, c.width < 500 ? 9 : 10);
+    if (c.plane === 'XZ') {
+      for (const [z, text, color] of [[0, 'Z = 0 · 起始边界', '#a0d8c2'], [7, '+7 · 有限步可达', '#d8b775'], [8, '+8 · 不可到达', '#8e7c82']]) {
+        if (z < b.minZ || z > b.maxZ) continue;
+        const desiredX = z === 0 ? 32 : Math.max(32, c.width - 202);
+        const railX = clamp(c.world(desiredX, c.midpoint[1])[0], b.minX, b.maxX);
+        const [x, y] = c.screen(...c.point(railX, z));
+        this.chip(text, Math.max(12, x - 8), y - 27, color, c.width < 500 ? 9 : 10);
+      }
     }
     // Coordinates stay tied to the plane, rather than implying that a cropped
     // viewport is the boundary of the mathematical board.
-    const bottomZ = b.minZ + 1;
+    const bottomV = clamp(c.world(c.midpoint[0], c.height - 70)[c.verticalAxis], minV + 1, maxV);
     for (let x = Math.ceil(b.minX / 2) * 2; x <= b.maxX; x += 2) {
-      const [px, py] = c.screen(x, c.slice, bottomZ);
+      const [px, py] = c.screen(...c.point(x, bottomV));
       if (px > 28 && px < c.width - 28 && py > 20 && py < c.height - 32) {
-        ctx.textAlign = 'center'; ctx.fillStyle = '#536e6b'; ctx.fillText(`${x}`, px, py + 19);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#536e6b'; ctx.fillText(`X ${x}`, px, py + 19);
       }
     }
   }
   triad() {
     const c = this.camera, ctx = this.ctx, ox = c.width - 54, oy = 76;
-    const center = c.screen(c.center[0], c.slice, c.center[1]), length = 25 / c.cell;
+    const [x, y, z] = c.target, center = c.screen(x, y, z), length = 25 / c.cell;
     const axes = [
-      ['X', '#c7a593', c.screen(c.center[0] + length, c.slice, c.center[1])],
-      ['Y', '#9eaeca', c.screen(c.center[0], c.slice + length, c.center[1])],
-      ['Z', '#93d3b7', c.screen(c.center[0], c.slice, c.center[1] + length)],
+      ['X', '#c7a593', c.screen(x + length, y, z)],
+      ['Y', '#9eaeca', c.screen(x, y + length, z)],
+      ['Z', '#93d3b7', c.screen(x, y, z + length)],
     ].sort((a, b) => a[2][2] - b[2][2]);
     this.circle(ox, oy, 2, '#80958e');
     ctx.font = `600 10px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

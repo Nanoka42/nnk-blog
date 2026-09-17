@@ -130,7 +130,8 @@ async function setup() {
   const snapshot = () => registered.get('read_conway_game').execute();
   const currentCamera = () => {
     const camera = new Camera(); camera.resize(canvas.clientWidth, canvas.clientHeight);
-    const { pickable, autoFollow, ...view } = snapshot().view;
+    const { pickable, autoFollow, plane, ...view } = snapshot().view;
+    camera.setPlane(plane);
     Object.assign(camera, view); return camera;
   };
   const screen = point => currentCamera().screen(...point);
@@ -551,4 +552,120 @@ test('structured edit validation does not skip sparse coordinates or leave a par
     await assert.rejects(h.execute('toggle_blueprint_cells', { cells }));
     assert.deepEqual(h.snapshot(), before);
   }
+});
+
+test('switching planes retains an off-center selection and every world projection', async () => {
+  const h = await setup(), from = [3, 2, -1];
+  await h.execute('toggle_blueprint_cells', { cells: [from, [3, 2, 0]] });
+  h.input('slice-value', 2); h.click('primary-action'); h.tap(from);
+  assert.deepEqual(h.snapshot().selected, from);
+  const before = h.snapshot(), pixels = [from, [3, 2, 1], [0, 0, 0]].map(h.screen);
+  h.click('plane-xy');
+  const xy = h.snapshot();
+  assert.deepEqual(xy.selected, from);
+  assert.equal(xy.view.plane, 'XY'); assert.equal(xy.view.slice, -1);
+  for (const key of ['target', 'zoom', 'yaw', 'pitch', 'depth', 'autoFollow']) assert.deepEqual(xy.view[key], before.view[key]);
+  assert.deepEqual([from, [3, 2, 1], [0, 0, 0]].map(h.screen), pixels);
+  assert.equal(h.$('plane-xy').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.$('plane-xz').getAttribute('aria-pressed'), 'false');
+  assert.match(h.$('neighbor-legend').getAttribute('aria-label'), /Z−.*Z\+/);
+  assert.match(h.$('slice-value').getAttribute('aria-label'), /Z/);
+  assert.match(h.$('jump-zp').title, /自动跟随/);
+  assert.equal(h.$('edge-warning').hidden, false);
+  h.click('plane-xy'); assert.deepEqual(h.snapshot(), xy, 'active plane is a no-op');
+  h.input('slice-value', '-1'); assert.deepEqual(h.snapshot(), xy, 're-entering the slice must not pull the camera toward the selection');
+  h.click('plane-xz'); assert.deepEqual(h.snapshot(), before);
+});
+
+test('without a selection plane switching chooses the nearest center layer without moving the camera', async () => {
+  const h = await setup();
+  h.click('pan-mode');
+  h.dispatchPointer('pointerdown', 700, [400, 350]);
+  h.dispatchPointer('pointermove', 700, [423, 383]);
+  h.dispatchPointer('pointerup', 700, [423, 383]);
+  h.click('zoom-in');
+  const before = h.snapshot().view, pixel = h.screen([0, 0, 0]);
+  assert.notEqual(before.target[2], Math.round(before.target[2]));
+  h.key('v');
+  assert.equal(h.snapshot().view.plane, 'XY');
+  assert.equal(h.snapshot().view.slice, Math.round(before.target[2]));
+  assert.deepEqual(h.snapshot().view.target, before.target);
+  assert.deepEqual(h.screen([0, 0, 0]), pixel);
+  h.key('v'); assert.deepEqual(h.snapshot().view, before);
+});
+
+test('XY locate, cursor, slice range, face and home use the active axes', async () => {
+  const h = await setup();
+  h.click('plane-xy'); h.locate(4, -3, -2);
+  assert.deepEqual(h.snapshot().view.target, [4, -3, -2]);
+  assert.deepEqual(h.snapshot().view.center, [4, -3]);
+  assert.equal(h.snapshot().view.slice, -2);
+  assert.equal(h.snapshot().view.pitch, -Math.PI / 2);
+  h.key('Enter'); h.key('ArrowUp'); h.key('Enter');
+  assert.deepEqual(new Set(h.snapshot().differences), new Set(['4,-3,-2', '4,-2,-2']));
+  h.key('q'); assert.equal(h.snapshot().view.slice, -3);
+  h.key('e'); assert.equal(h.snapshot().view.slice, -2);
+  h.input('slice-range', '-1', 'input'); h.input('slice-range', '-1');
+  assert.equal(h.snapshot().view.slice, -1);
+  h.input('slice-value', '1.5'); assert.equal(h.snapshot().view.slice, -1);
+  h.click('home');
+  assert.equal(h.snapshot().view.plane, 'XY');
+  assert.equal(h.snapshot().view.slice, 0);
+  assert.deepEqual(h.snapshot().view.target, [0, 0, 0]);
+  assert.equal(h.snapshot().view.pickable, true);
+});
+
+for (const follow of [true, false]) {
+  for (const method of ['button', 'canvas', 'tool']) {
+    test(`XY cross-Z jump and undo respect follow=${follow} via ${method}`, async () => {
+      const h = await setup(), from = [0, 0, -1], to = [0, 0, 1];
+      await h.execute('toggle_blueprint_cells', { cells: [from, [0, 0, 0]] });
+      h.click('primary-action'); h.tap(from); h.click('plane-xy');
+      // Retained XZ camera is side-on to XY, but explicit handles remain usable.
+      assert.equal(h.snapshot().view.pickable, false);
+      if (!follow) h.click('auto-follow');
+      const before = h.snapshot().view;
+      if (method === 'button') h.click('jump-zp');
+      if (method === 'canvas') h.tap(to);
+      if (method === 'tool') await h.execute('move_conway_piece', { from, to });
+      assert.equal(h.snapshot().steps, 1);
+      assert.deepEqual(h.snapshot().differences, ['0,0,1']);
+      assert.equal(h.snapshot().view.plane, 'XY');
+      assert.equal(h.snapshot().view.slice, follow ? 1 : -1);
+      if (!follow) assert.deepEqual(h.snapshot().view, before);
+      h.click('tertiary-action');
+      assert.equal(h.snapshot().view.slice, -1);
+      assert.equal(h.snapshot().pieces, 2);
+      if (!follow) assert.deepEqual(h.snapshot().view, before);
+    });
+  }
+}
+
+test('XY keyboard jumps clear selection and preserve the chosen in-plane view', async () => {
+  for (const follow of [false, true]) {
+    const h = await setup();
+    h.click('plane-xy'); h.locate(0, 0, 0);
+    await h.execute('toggle_blueprint_cells', { cells: [[0, 0, 0], [0, 1, 0]] });
+    h.click('primary-action');
+    if (!follow) h.click('auto-follow');
+    h.key('Enter'); h.key('ArrowUp'); h.key('ArrowUp');
+    const before = h.snapshot().view;
+    h.key('Enter');
+    assert.equal(h.snapshot().steps, 1);
+    assert.equal(h.snapshot().selected, null);
+    assert.deepEqual(h.snapshot().differences, ['0,2,0']);
+    assert.deepEqual(h.snapshot().view, before);
+    h.click('tertiary-action'); assert.equal(h.snapshot().pieces, 2);
+  }
+});
+
+test('plane changes cancel pending touches while dialogs block plane shortcuts', async () => {
+  const h = await setup();
+  const held = h.down([0, 0, 0]); h.click('plane-xy'); h.up(held);
+  assert.equal(h.snapshot().pieces, 0);
+  h.click('info'); const before = h.snapshot();
+  h.key('v'); h.click('plane-xz');
+  assert.deepEqual(h.snapshot(), before);
+  h.click('close-info'); h.click('plane-xz');
+  assert.equal(h.snapshot().view.plane, 'XZ');
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Camera, CAMERA_LIMIT, MIN_ZOOM, MAX_ZOOM } from '../src/camera.js';
+import { Camera, CAMERA_LIMIT, MIN_ZOOM, MAX_ZOOM, MIN_PLANE_SCALE } from '../src/camera.js';
 import { BoardGesture } from '../src/gestures.js';
 import { Renderer, neighborStyle, TARGET_COLORS } from '../src/renderer.js';
 import { Board } from '../src/engine.js';
@@ -19,7 +19,7 @@ for (const [width, height] of [[320, 450], [390, 600], [800, 650], [1440, 900]])
     for (const yaw of [0, .7, -.9, Math.PI, -2.3]) {
       c.yaw = yaw;
       for (const point of [[17, -13, -8], [15, -13, -5], [19, -13, -9]]) {
-        const screen = c.screen(...point), world = c.world(...screen);
+        const screen = c.screen(...point), world = c.world(...screen.slice(0, 2));
         point.forEach((v, i) => near(world[i], v));
         assert.deepEqual(c.hit(...screen), point);
       }
@@ -60,7 +60,7 @@ test('blank space outside the capped visible window cannot edit invisible sites'
   assert.equal(c.inside(...hidden), true);
   assert.deepEqual(c.hit(...visible), [5, 0, 0]);
   assert.equal(c.hit(...hidden), null);
-  const far = [1337, c.slice, -444], world = c.world(...c.screen(...far));
+  const far = [1337, c.slice, -444], world = c.world(...c.screen(...far).slice(0, 2));
   far.forEach((v, i) => near(v, world[i]));
 });
 
@@ -97,7 +97,7 @@ test('finite sampling window and safe camera limits at any orbit or zoom', () =>
     assert.ok(Object.values(b).every(n => Number.isFinite(n) && Math.abs(n) <= CAMERA_LIMIT));
   }
   for (let i = 0; i < 100; i++) c.orbit(200, 200);
-  assert.ok(c.pitch <= .85); assert.ok(Math.abs(c.yaw) <= Math.PI);
+  assert.ok(c.pitch <= Math.PI / 2); assert.ok(Math.abs(c.yaw) <= Math.PI);
 });
 
 test('mouse and touch taps resolve once, while drag or out-of-bounds taps never edit', () => {
@@ -132,16 +132,22 @@ test('pan mode applies to a single finger without changing orbit', () => {
   assert.equal(camera.yaw, yaw); assert.notDeepEqual(camera.center, center); assert.equal(taps.length, 0);
 });
 
-test('pinch anchors pan and zoom without orbiting or dropping an accidental piece', () => {
+for (const plane of ['XZ', 'XY']) test(`${plane} pinch anchors pan and zoom without orbiting or dropping an accidental piece`, () => {
   const { camera, taps, gesture } = setup(), [x, y] = camera.midpoint;
-  const anchor = camera.world(x, y), yaw = camera.yaw;
+  camera.setPlane(plane); camera.home();
+  const anchor = camera.world(x, y), yaw = camera.yaw, pitch = camera.pitch;
   gesture.down(1, x - 50, y, 'touch'); gesture.down(2, x + 50, y, 'touch');
   gesture.move(1, x - 80, y + 15); gesture.move(2, x + 100, y + 15);
   anchor.forEach((value, i) => near(value, camera.world(x + 10, y + 15)[i]));
-  assert.equal(camera.yaw, yaw); assert.ok(camera.zoom > 1);
-  gesture.up(2, x + 100, y + 15); gesture.move(1, x - 60, y + 15); gesture.up(1, x - 60, y + 15);
-  assert.equal(taps.length, 0); assert.equal(camera.yaw, yaw);
-  gesture.down(3, x, y, 'touch'); gesture.up(3, x, y); assert.equal(taps.length, 1);
+  const projected = camera.screen(...anchor);
+  near(projected[0], x + 10); near(projected[1], y + 15);
+  assert.equal(camera.yaw, yaw); assert.equal(camera.pitch, pitch); assert.ok(camera.zoom > 1);
+  gesture.up(2, x + 100, y + 15); gesture.move(1, x - 60, y + 28); gesture.up(1, x - 60, y + 28);
+  assert.equal(taps.length, 0); assert.equal(camera.yaw, yaw); assert.equal(camera.pitch, pitch);
+  assert.equal(gesture.pointers.size, 0);
+  const point = camera.point(0, 0), screen = camera.screen(...point);
+  gesture.down(3, screen[0], screen[1], 'touch'); gesture.up(3, screen[0], screen[1]);
+  assert.deepEqual(taps, [point]);
 });
 
 test('pointer cancellation and edge-on clicks never edit', () => {
@@ -205,6 +211,62 @@ const sixWayPicker = () => pickerSetup([
   [0, 0, -2], [0, 0, -1], [0, 0, -3],
   [1, 0, -2], [-1, 0, -2], [0, 1, -2], [0, -1, -2],
 ], [0, 0, -2]);
+
+test('newly editable shallow views keep sphere silhouettes and mouse/touch picks unambiguous', () => {
+  for (const plane of ['XZ', 'XY']) for (const sign of [-1, 1]) for (const scale of [MIN_PLANE_SCALE + 1e-6, .47]) {
+    const { camera: c, renderer, board } = pickerSetup([[0, 0, 0]]);
+    c.setPlane(plane); c.slice = 0; c.center = [0, 0]; c.depth = 0;
+    for (const direction of [-1, 1]) board.toggle(...c.point(plane === 'XZ' ? direction : 0, plane === 'XY' ? direction : 0));
+    c.pitch = plane === 'XY' ? Math.asin(sign * scale) : 0;
+    c.yaw = plane === 'XY' ? 0 : Math.acos(sign * scale);
+    for (const [width, height] of [[320, 450], [1800, 900]]) for (const zoom of [MIN_ZOOM, 1, MAX_ZOOM]) {
+      c.resize(width, height); c.zoom = zoom;
+      const point = c.point(0, 0), p = c.screen(...point), radius = Math.min(c.cell * .224, 21);
+      // Probe around the whole visible sphere, especially its compressed axis.
+      // Its filled silhouette must still round to its own site near the guard.
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+        const pointer = [p[0] + Math.cos(angle) * radius, p[1] + Math.sin(angle) * radius];
+        assert.deepEqual(renderer.pick(...pointer), point);
+        const taps = [], gesture = new BoardGesture(c, { pick: (x, y) => renderer.pick(x, y), tap: (...p) => taps.push(p) });
+        for (const type of ['mouse', 'touch']) {
+          gesture.down(1, ...pointer, type); gesture.up(1, ...pointer);
+        }
+        assert.deepEqual(taps, [point, point]);
+      }
+    }
+  }
+});
+
+test('newly editable shallow views still suppress neighboring ghost hits', () => {
+  for (const plane of ['XZ', 'XY']) for (const sign of [-1, 1]) for (const offset of [-2, -1, 1, 2]) {
+    const { camera: c, renderer, board } = pickerSetup();
+    c.setPlane(plane); c.slice = 0; c.center = [0, 0]; c.depth = 2;
+    c.pitch = plane === 'XY' ? Math.asin(sign * .47) : .2;
+    c.yaw = plane === 'XY' ? .43 : Math.acos(sign * .47 / Math.cos(c.pitch));
+    const point = c.point(0, 0, offset); board.toggle(...point);
+    const ghost = c.screen(...point), candidate = c.hit(...ghost);
+    assert.equal(c.pickable, true); assert.notEqual(candidate, null);
+    assert.equal(renderer.pick(...ghost), null);
+    c.depth = 0;
+    assert.deepEqual(renderer.pick(...ghost), candidate);
+  }
+});
+
+test('newly editable shallow views preserve six-axis destination picking from both sides', () => {
+  for (const plane of ['XZ', 'XY']) for (const sign of [-1, 1]) {
+    const { camera: c, renderer } = sixWayPicker();
+    c.setPlane(plane, renderer.game.selected); c.center = plane === 'XY' ? [0, 0] : [0, -2]; c.depth = 2;
+    c.pitch = plane === 'XY' ? Math.asin(sign * .47) : 0;
+    c.yaw = plane === 'XY' ? 0 : Math.acos(sign * .47);
+    assert.equal(c.pickable, true);
+    const targets = renderer.targets();
+    assert.equal(targets.length, 6);
+    for (const target of targets) {
+      assert.equal(target.occluded, false);
+      assert.deepEqual(renderer.pick(...target.p), target.point);
+    }
+  }
+});
 
 test('all six separated legal destination circles are directly clickable, with no ghost layers', () => {
   const { camera: c, renderer } = sixWayPicker(); c.depth = 0;
@@ -286,7 +348,7 @@ test('equal-depth coincident targets have a deterministic top target and no ambi
   assert.deepEqual(renderer.targets().map(t => [t.label, t.occluded]), [['+Y', true], ['−Y', false]]);
 });
 
-test('both occupied and empty neighbor references show world-Y color and camera-depth outline', () => {
+test('both planes use signed-normal color and camera-depth outline for occupied and empty neighbors', () => {
   const { camera: c, renderer } = pickerSetup();
   assert.notEqual(neighborStyle(-1).color, neighborStyle(1).color);
   assert.deepEqual(neighborStyle(1).dash, []);
@@ -298,13 +360,17 @@ test('both occupied and empty neighbor references show world-Y color and camera-
     setLineDash(dash) { this.dash = dash; },
     stroke() { strokes.push({ color: this.strokeStyle, dash: [...this.dash] }); } };
   renderer.ctx = ctx;
-  for (const yaw of [.43, Math.PI]) for (const occupied of [false, true]) for (const sign of [-1, 1]) {
-    c.yaw = yaw;
-    const point = [0, c.slice + sign, 0];
-    renderer.node({ point, p: c.screen(...point), active: false, occupied });
-    const stroke = strokes.at(-1);
-    assert.equal(stroke.color, neighborStyle(sign, c).color);
-    assert.equal(stroke.dash.length > 0, neighborStyle(sign, c).far);
+  for (const plane of ['XZ', 'XY']) for (const yaw of [.43, Math.PI]) for (const pitch of [-1.1, .7]) {
+    c.setPlane(plane); c.yaw = yaw; c.pitch = pitch;
+    for (const occupied of [false, true]) for (const sign of [-1, 1]) {
+      const point = c.point(0, 0, c.slice + sign);
+      renderer.node({ point, p: c.screen(...point), active: false, occupied });
+      const stroke = strokes.at(-1);
+      assert.equal(stroke.color, neighborStyle(sign, c).color);
+      assert.equal(stroke.dash.length > 0, neighborStyle(sign, c).far);
+      const depth = c.screen(...point)[2] - c.screen(...c.point(0, 0))[2];
+      assert.equal(neighborStyle(sign, c).far, depth < -1e-7);
+    }
   }
 });
 
@@ -356,17 +422,155 @@ test('ghost suppression follows displayed depth and retains generous empty-cell 
   assert.equal(renderer.pick(...c.midpoint), null);
 });
 
-test('rendering a full half-space visits at most 31 × 31 × 5 sites per frame', () => {
-  const c = new Camera(); c.resize(1400, 1000); c.zoom = MIN_ZOOM; c.depth = 2;
-  let occupancyQueries = 0;
-  const board = { has(x, y, z) { occupancyQueries++; return z <= 0; }, movesFrom() { return []; } };
+const drawingContext = () => {
   const gradient = { addColorStop() {} };
-  const ctx = new Proxy({ measureText: text => ({ width: text.length * 6 }), createLinearGradient: () => gradient, createRadialGradient: () => gradient }, {
+  return new Proxy({ measureText: text => ({ width: text.length * 6 }), createLinearGradient: () => gradient, createRadialGradient: () => gradient }, {
     get(target, prop) { return target[prop] ?? (() => {}); },
   });
+};
+
+for (const plane of ['XZ', 'XY']) test(`${plane} rendering visits at most 31 × 31 × 5 sites per frame`, () => {
+  const c = new Camera(); c.resize(1400, 1000); c.zoom = MIN_ZOOM; c.depth = 2;
+  c.setPlane(plane); c.home(); c.zoom = MIN_ZOOM;
+  let occupancyQueries = 0;
+  const board = { has(x, y, z) { occupancyQueries++; return z <= 0; }, movesFrom() { return []; } };
+  const ctx = drawingContext();
   const canvas = { style: {}, getContext: () => ctx };
   const renderer = new Renderer(canvas, c, { board, selected: null, mode: 'blueprint' });
   renderer.render();
   assert.ok(occupancyQueries > 0); assert.ok(occupancyQueries <= 31 * 31 * 5);
   assert.equal(canvas.style.width, '100%');
+});
+
+test('XY neighbor silhouettes never edit their projected current-plane cells, from either side', () => {
+  for (const pitch of [-1.2, -.85, .85, 1.2]) for (const yaw of [0, .43, Math.PI]) for (const offset of [-2, -1, 1, 2]) {
+    const { camera: c, renderer } = pickerSetup([[0, 0, offset]]);
+    c.setPlane('XY'); c.slice = 0; c.center = [0, 0]; c.pitch = pitch; c.yaw = yaw; c.depth = 2;
+    const ghost = c.screen(0, 0, offset), candidate = c.hit(...ghost);
+    assert.notEqual(candidate, null);
+    assert.equal(renderer.pick(...ghost), null, `pitch ${pitch}, yaw ${yaw}, offset ${offset}`);
+    c.depth = 0;
+    assert.deepEqual(renderer.pick(...ghost), candidate);
+  }
+});
+
+test('XY active pieces and exact grid dots retain priority over neighboring Z silhouettes', () => {
+  const { camera: c, renderer, board } = pickerSetup([[0, 0, 0], [0, 0, -1]]);
+  c.setPlane('XY'); c.slice = 0; c.center = [0, 0]; c.yaw = 0; c.pitch = -Math.PI / 2 + .24;
+  const p = c.screen(0, 0, 0), pointer = [p[0], p[1] + c.cell * .15], ghost = c.screen(0, 0, -1);
+  assert.ok(Math.hypot(pointer[0] - ghost[0], pointer[1] - ghost[1]) < c.cell * .145);
+  assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
+  board.toggle(0, 0, 0);
+  assert.equal(renderer.pick(...pointer), null);
+  c.pitch = -Math.PI / 2 + .08;
+  assert.deepEqual(renderer.pick(...c.screen(0, 0, 0)), [0, 0, 0]);
+});
+
+test('XY six-axis handles stay world-colored and clickable in oblique and guarded side views', () => {
+  const { camera: c, renderer } = sixWayPicker();
+  c.setPlane('XY'); c.slice = -2; c.center = [0, 0]; c.depth = 0;
+  for (const pitch of [-.9, 0]) {
+    c.pitch = pitch;
+    assert.equal(c.pickable, pitch !== 0);
+    const targets = renderer.targets();
+    assert.equal(targets.length, 6);
+    for (const target of targets) {
+      assert.equal(target.occluded, false);
+      assert.equal(target.color, TARGET_COLORS[target.label.at(-1)]);
+      assert.deepEqual(renderer.pick(...target.p), target.point);
+    }
+    const target = targets.find(t => t.label === '+Z'), taps = [];
+    const gesture = new BoardGesture(c, { pick: (x, y) => renderer.pick(x, y), tap: (...p) => taps.push(p) });
+    gesture.down(1, ...target.p.slice(0, 2), 'touch'); gesture.up(1, ...target.p.slice(0, 2));
+    assert.deepEqual(taps, [target.point]);
+  }
+});
+
+test('XY covered Z handles recover only after full reveal and swap ownership on the other side', () => {
+  const { camera: c, renderer } = pickerSetup([[0, 0, 0], [0, 0, -1], [0, 0, 1]], [0, 0, 0]);
+  c.setPlane('XY'); c.slice = 0; c.center = [0, 0]; c.face();
+  assert.equal(renderer.targets().find(t => t.label === '+Z').occluded, true);
+  c.pitch = -Math.PI / 2 + .12;
+  assert.equal(renderer.targets().find(t => t.label === '+Z').occluded, true);
+  c.pitch = -Math.PI / 2 + .15;
+  for (const target of renderer.targets()) {
+    assert.equal(target.occluded, false);
+    assert.deepEqual(renderer.pick(...target.p), target.point);
+  }
+  c.pitch = Math.PI / 2;
+  const reversed = renderer.targets();
+  assert.equal(reversed.find(t => t.label === '−Z').occluded, true);
+  assert.equal(reversed.find(t => t.label === '+Z').occluded, false);
+  assert.deepEqual(renderer.pick(...reversed.at(-1).p), [0, 0, 2]);
+});
+
+test('changing work planes preserves handle projections, occlusion and world-axis labels', () => {
+  const { camera: c, renderer } = sixWayPicker(); c.pitch = -.75;
+  const before = renderer.targets();
+  c.setPlane('XY', renderer.game.selected);
+  assert.deepEqual(renderer.targets(), before);
+  c.setPlane('XZ', renderer.game.selected);
+  assert.deepEqual(renderer.targets(), before);
+});
+
+test('XY grid treats Z=0/7/8 as whole planes and uses Y coordinate labels', () => {
+  const { camera: c, renderer } = pickerSetup();
+  c.setPlane('XY'); c.center = [0, 0]; c.depth = 0; c.face();
+  const texts = [], lines = [], polygons = [];
+  renderer.ctx = { fillText: text => texts.push(text) };
+  renderer.chip = text => texts.push(text);
+  renderer.worldLine = (a, b, color, width, dash) => lines.push({ a, b, color, width, dash });
+  renderer.polygon = (points, fill, stroke) => polygons.push({ points, fill, stroke });
+  for (const [slice, description, stroke] of [[0, '起始边界', '#89d9bc65'], [7, '有限步可达', '#d3af6259'], [8, '不可到达', '#ad858a40']]) {
+    c.slice = slice; texts.length = 0; lines.length = 0; polygons.length = 0;
+    renderer.grid(c.bounds()); renderer.labels(c.bounds());
+    assert.ok(texts.includes(`Z = ${slice} · ${description}`));
+    assert.ok(texts.some(text => /^Y /.test(text)));
+    assert.ok(texts.some(text => /^X /.test(text)));
+    assert.ok(polygons.some(polygon => polygon.stroke === stroke));
+    assert.ok(polygons.every(polygon => polygon.points.every(point => point[2] === slice)));
+    assert.ok(lines.every(line => line.a[2] === slice && line.b[2] === slice));
+    assert.ok(lines.every(line => !line.dash?.length));
+    assert.ok(lines.every(line => !['#d3af6259', '#ad858a28'].includes(line.color)));
+    const reference = lines.filter(line => line.color === '#89d9bc65');
+    assert.equal(reference.length, 1);
+    assert.equal(reference[0].a[1], 0); assert.equal(reference[0].b[1], 0);
+    assert.equal(reference[0].width, 1.5);
+  }
+});
+
+test('both planes emphasize the current X reference line over neighboring slice rails', () => {
+  const { camera: c, renderer } = pickerSetup(), lines = [];
+  renderer.polygon = () => {};
+  renderer.worldLine = (a, b, color, width, dash) => lines.push({ a, b, color, width, dash });
+  for (const plane of ['XZ', 'XY']) for (const depth of [1, 2]) {
+    c.setPlane(plane); c.slice = 3; c.center = [0, 0]; c.yaw = .43; c.pitch = -.8; c.depth = depth;
+    lines.length = 0; renderer.grid(c.bounds());
+    const rails = lines.filter(line => line.a[c.verticalAxis] === 0 && line.b[c.verticalAxis] === 0 && line.a[0] !== line.b[0]);
+    const current = rails.find(line => line.a[c.normalAxis] === c.slice);
+    const neighbors = rails.filter(line => line.a[c.normalAxis] !== c.slice);
+    assert.equal(neighbors.length, 2);
+    assert.equal(current.color, '#89d9bc65'); assert.equal(current.width, 1.5); assert.deepEqual(current.dash, []);
+    for (const neighbor of neighbors) {
+      assert.ok(current.width > neighbor.width);
+      assert.ok(parseInt(current.color.slice(-2), 16) > parseInt(neighbor.color.slice(-2), 16));
+    }
+  }
+});
+
+test('XY render samples normal-Z layers and only focuses hover/cursor on the current Z plane', () => {
+  const { camera: c, renderer } = pickerSetup([[1, 2, 0], [1, 2, -1], [1, 2, 1]]);
+  c.setPlane('XY'); c.slice = 0; c.center = [0, 0]; c.pitch = -1.1;
+  renderer.ctx = drawingContext();
+  const nodes = [], focused = [];
+  renderer.node = node => nodes.push(node); renderer.focus = point => focused.push(point);
+  renderer.hover = [1, 2, 0]; renderer.cursor = [1, 0, 1];
+  renderer.render();
+  assert.ok(nodes.filter(node => node.active).every(node => node.point[2] === 0));
+  assert.ok(nodes.some(node => !node.active && node.occupied && node.point[2] === -1));
+  assert.ok(nodes.some(node => !node.active && node.occupied && node.point[2] === 1));
+  assert.deepEqual(focused, [[1, 2, 0]]);
+  focused.length = 0; renderer.hover = [1, 0, 1]; renderer.cursor = [1, -3, 0];
+  renderer.render();
+  assert.deepEqual(focused, [[1, -3, 0]]);
 });

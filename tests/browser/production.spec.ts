@@ -129,6 +129,18 @@ for (const gamePath of [conwayPath, conway3dPath]) test(`built ${gamePath} start
   await page.keyboard.press('Space');
   await page.locator('#primary-action').click();
   await expect(page.locator('#mode-name')).toHaveText('跳棋模式');
+  if (gamePath === conway3dPath) {
+    await page.locator('#board').focus();
+    await page.keyboard.press('Space');
+    await page.locator('#plane-xy').click();
+    await expect(page.locator('#plane-badge')).toHaveText('XY 工作面 · Z = 0');
+    await expect(page.locator('#selection-label')).toHaveText('X 0 / Y 0 / Z 0');
+    await page.locator('#face').click();
+    await expect(page.locator('#edge-warning')).toBeHidden();
+    await page.locator('#slice-next').click();
+    await expect(page.locator('#plane-badge')).toHaveText('XY 工作面 · Z = 1');
+    await expect(page.locator('#selection-label')).toHaveText('选择一枚棋子');
+  }
   await page.locator('#sound').click();
   await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false');
   for (const image of await page.locator('img:visible').all()) {
@@ -159,7 +171,8 @@ test('3D controls remain reachable above the site footer on short screens', asyn
       const app = await page.locator('.app').boundingBox();
       const footer = await page.locator('.game-site-footer').boundingBox();
       expect(footer!.y, `${width}×${height}: footer must follow the game`).toBeGreaterThanOrEqual(app!.y + app!.height - 1);
-      for (const selector of ['#primary-action', '#secondary-action', '#tertiary-action']) {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      for (const selector of ['#plane-xz', '#plane-xy', '#slice-prev', '#slice-next', '#primary-action', '#secondary-action', '#tertiary-action']) {
         const button = page.locator(selector);
         await button.scrollIntoViewIfNeeded();
         expect(await button.evaluate((element) => {
@@ -172,6 +185,9 @@ test('3D controls remain reachable above the site footer on short screens', asyn
     await page.locator('#tertiary-action').click();
     await page.locator('#primary-action').click();
     await expect(page.locator('#mode-name')).toHaveText('跳棋模式');
+    await page.locator('#plane-xy').click();
+    await page.locator('#face').click();
+    await expect(page.locator('#plane-badge')).toContainText('XY');
     await checkFooter();
   }
 });

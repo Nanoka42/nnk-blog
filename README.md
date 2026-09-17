@@ -74,7 +74,7 @@ dist/                          最终上传到 OSS 的静态文件（生成，�
 - `markdown-regression.md` 是开发草稿，生产路由、首页、列表、标签、RSS 和 sitemap 不包含它。
 - GFM、表格、脚注、数学、Shiki 高亮和代码复制都在普通 Markdown 中可用。
 - 独立公式按钮及行内公式旁的 ⧉ 可复制原始 TeX；剪贴板权限不足时显示可选文本。
-- 2D 康威跳棋的主入口是 `/projects/conway-soldiers/`；3D 版是 `/projects/conway-soldiers-3d/`。两个入口都直接显示完整棋盘，游戏内部说明窗口提供另一个版本的链接。
+- 2D 康威跳棋的主入口是 `/projects/conway-soldiers/`；3D 版是 `/projects/conway-soldiers-3d/`，支持保持视角与选子的 XZ / XY 工作面切换，以及键鼠和触屏六向跳跃。两个入口都直接显示完整棋盘，游戏内部说明窗口提供另一个版本的链接。
 - 作品封面位于 `assets/`；游戏自己的脚本、样式、图标和音效由构建脚本复制到 `public/play/<slug>/`，使用同源静态资源，无需运行时 CDN、服务端 API 或额外 npm 运行依赖。
 - `config/redirects.mjs` 保留 2D 的 25 个短链与旧 `/play/conway-soldiers/` 跳转；3D 正则 `^conways?[_-]?(?:soldier|checker)s?[_-]?3d$` 对应 72 个短链，加上 `/coso3d` 共 73 个，并提供 `/play/conway-soldiers-3d/` 兼容跳转。静态页自动跳转并保留 query/hash；可选的 CDN HTTP 重定向配置见[部署指南](docs/DEPLOYMENT_GUIDE.md#康威跳棋短链)。
 
