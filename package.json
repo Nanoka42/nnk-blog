@@ -7,12 +7,12 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "node scripts/prepare-game.mjs && astro dev --host 127.0.0.1",
-    "build": "node scripts/prepare-game.mjs && astro build && node scripts/verify-build.mjs",
+    "dev": "node scripts/prepare-games.mjs && astro dev --host 127.0.0.1",
+    "build": "node scripts/prepare-games.mjs && astro build && node scripts/verify-build.mjs",
     "build:release": "node scripts/build-release.mjs",
     "preview": "astro preview --host 127.0.0.1",
-    "check": "node scripts/prepare-game.mjs && astro check",
-    "test": "node --test tests/*.test.mjs && npm --prefix conway_checker_game test",
+    "check": "node scripts/prepare-games.mjs && astro check",
+    "test": "node --test tests/*.test.mjs && node scripts/test-games.mjs",
     "test:browser": "playwright test"
   },
   "dependencies": {

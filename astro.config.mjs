@@ -36,7 +36,7 @@ export default defineConfig({
   // Port 0 lets the OS choose an available port, including on Windows with reserved ranges.
   server: { host: '127.0.0.1', port: 0 },
   build: { format: 'directory' },
-  vite: { server: { watch: { ignored: ['**/conway_checker_game/**', '**/public/play/**', '**/.generated/**'] } } },
+  vite: { server: { watch: { ignored: ['**/apps/**', '**/public/play/**', '**/.generated/**'] } } },
   integrations: [sitemap({
     filter: (page) => !['/404/', '/404.html'].includes(new URL(page).pathname) && !isRedirectPath(new URL(page).pathname),
   })],

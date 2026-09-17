@@ -1,8 +1,9 @@
 ---
 import RedirectPage from '../components/RedirectPage.astro';
-import { redirectPaths, conwayPath } from '../../config/redirects.mjs';
+import { redirectPaths, redirects } from '../../config/redirects.mjs';
 export function getStaticPaths() {
-  return redirectPaths.map((redirect) => ({ params: { redirect } }));
+  return redirectPaths.map((redirect) => ({ params: { redirect }, props: { target: redirects[`/${redirect}/`] } }));
 }
+const { target } = Astro.props;
 ---
-<RedirectPage target={conwayPath} />
+<RedirectPage target={target} />

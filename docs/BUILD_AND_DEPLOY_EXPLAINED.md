@@ -275,7 +275,7 @@ J:\NANOKA\N Blog\nnk_blog\dist\
 
 这些是真实存在于你硬盘上的文件。修改源码后，它们不会自动因为 git push 而更新；要重新运行构建。
 
-项目里还有游戏子项目的 conway_checker_game/dist。**发布整个博客时要用 nnk_blog 根目录的 dist，它已包含游戏；不用分别发布两个 dist。**
+项目里还有游戏子项目的 `apps/conway-soldiers/dist/` 和 `apps/conway-soldiers-3d/dist/`。**发布整个博客时要用 nnk_blog 根目录的 dist，它已包含两个游戏；不用分别发布子项目的 dist。** 源码目录与构建产物的详细关系见[交互作品集成说明](INTERACTIVE_APPS.md)。
 
 ### B. GitHub runner 上的 dist
 
@@ -385,12 +385,19 @@ dist/
 │  └─ my-note/
 │     └─ index.html
 ├─ projects/
-│  └─ conway-soldiers/
+│  ├─ conway-soldiers/
+│  │  └─ index.html
+│  └─ conway-soldiers-3d/
 │     └─ index.html
 ├─ play/
-│  └─ conway-soldiers/
+│  ├─ conway-soldiers/
+│  │  ├─ index.html（兼容跳转）
+│  │  ├─ src/
+│  │  ├─ icons/
+│  │  └─ sounds/
+│  └─ conway-soldiers-3d/
+│     ├─ index.html（兼容跳转）
 │     ├─ src/
-│     ├─ icons/
 │     └─ sounds/
 ├─ _astro/
 │  └─ 构建生成的样式、脚本、图片等

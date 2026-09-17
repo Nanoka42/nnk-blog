@@ -1,5 +1,5 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "src/**/*", "astro.config.mjs"],
-  "exclude": ["dist", "node_modules", "conway_checker_game", "public/play"]
+  "exclude": ["dist", "node_modules", "apps", "public/play"]
 }

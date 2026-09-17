@@ -21,7 +21,7 @@ npm run dev
 
 ```bash
 npm run check       # 准备游戏产物，检查 Astro、TypeScript 和内容 schema
-npm test            # Markdown / 内容 / 配置工具测试 + 原游戏测试
+npm test            # Markdown / 内容 / 配置工具测试 + 2D、3D 游戏测试
 npm run build       # 构建游戏、博客，并验证最终静态文件与链接
 npm run build:release # 发布构建；额外要求配置有效的生产域名
 npm run preview     # 预览 dist，自动选择可用端口，以终端 Local 地址为准
@@ -45,14 +45,17 @@ npm run test:browser
 
 ```text
 assets/                         原有头像、动画头像、作品封面（保留）
-conway_checker_game/            原 H5 项目，继续支持独立运行
+apps/conway-soldiers/            2D 康威跳棋源码，可独立运行
+apps/conway-soldiers-3d/         3D 康威跳棋源码，可独立运行
+config/games.mjs                静态游戏注册表：源码、入口、资源目录
 config/site.mjs                 SITE_URL 校验与本地域名回退
-config/redirects.mjs            康威跳棋主入口、短链与旧入口映射
+config/redirects.mjs            两个康威跳棋版本的短链与兼容入口映射
 config/registration.mjs         ICP / 公安备案展示配置
 src/config.ts                  名称、简介占位、头像、社交链接、项目资料
 src/content.config.ts          文章 frontmatter schema
 src/content/posts/             Markdown 文章与 draft 回归 fixture
 src/pages/                     页面、RSS、robots 和标签静态路由
+src/layouts/GameLayout.astro    游戏 HTML 集成、站点元信息与返回入口
 src/plugins/markdown.mjs        数学源保留、代码工具条、表格与标题锚点
 src/styles/                    全站与正文样式
 scripts/                       H5 集成、构建检查、OSS 上传与上线验收
@@ -62,7 +65,7 @@ docs/                          实现、写作和部署指南
 dist/                          最终上传到 OSS 的静态文件（生成，不提交）
 ```
 
-`public/play/` 与 `.generated/` 由脚本自动生成，不要直接编辑。原 H5 的 `dist/` 也会重新生成。
+`apps/` 保存独立交互作品的源码；以后新增同类作品也放在这里。`public/play/`、`.generated/`、`apps/*/dist/` 与根 `dist/` 都是构建产物，不要直接编辑或提交。目录职责和新增作品流程见[交互作品集成说明](docs/INTERACTIVE_APPS.md)。
 
 ## 内容与作品
 
@@ -71,16 +74,20 @@ dist/                          最终上传到 OSS 的静态文件（生成，�
 - `markdown-regression.md` 是开发草稿，生产路由、首页、列表、标签、RSS 和 sitemap 不包含它。
 - GFM、表格、脚注、数学、Shiki 高亮和代码复制都在普通 Markdown 中可用。
 - 独立公式按钮及行内公式旁的 ⧉ 可复制原始 TeX；剪贴板权限不足时显示可选文本。
-- 康威跳棋的主入口是 `/projects/conway-soldiers/`，直接显示完整 H5 棋盘，不使用 iframe。文章区不再保留 `conway-notes`，作品入口也不再链接作品笔记。
-- 游戏封面位于 `assets/conway_checker_cover.png`；图标、音效和脚本仍由构建脚本生成到 `public/play/conway-soldiers/`，资源目录与页面主入口独立。
-- `config/redirects.mjs` 覆盖正则 `^conways?[_-]?(?:soldier|checker)s?$` 的全部 24 个短链，加上 `/coso`，共 25 个短链；旧 `/play/conway-soldiers/` 也跳转到主入口。静态跳转页与 CDN HTTP 重定向的配置见部署指南。
+- 2D 康威跳棋的主入口是 `/projects/conway-soldiers/`；3D 版是 `/projects/conway-soldiers-3d/`。两个入口都直接显示完整棋盘，游戏内部说明窗口提供另一个版本的链接。
+- 作品封面位于 `assets/`；游戏自己的脚本、样式、图标和音效由构建脚本复制到 `public/play/<slug>/`，使用同源静态资源，无需运行时 CDN、服务端 API 或额外 npm 运行依赖。
+- `config/redirects.mjs` 保留 2D 的 25 个短链与旧 `/play/conway-soldiers/` 跳转；3D 正则 `^conways?[_-]?(?:soldier|checker)s?[_-]?3d$` 对应 72 个短链，加上 `/coso3d` 共 73 个，并提供 `/play/conway-soldiers-3d/` 兼容跳转。静态页自动跳转并保留 query/hash；可选的 CDN HTTP 重定向配置见[部署指南](docs/DEPLOYMENT_GUIDE.md#康威跳棋短链)。
 
-独立运行原游戏：
+独立开发或验证游戏（两个子项目都不需要另行安装 npm 依赖）：
 
 ```bash
-npm --prefix conway_checker_game run dev
-npm --prefix conway_checker_game test
-npm --prefix conway_checker_game run build
+npm --prefix apps/conway-soldiers run dev
+npm --prefix apps/conway-soldiers test
+npm --prefix apps/conway-soldiers run build
+
+npm --prefix apps/conway-soldiers-3d run dev
+npm --prefix apps/conway-soldiers-3d test
+npm --prefix apps/conway-soldiers-3d run build
 ```
 
 ## CI 与上线
@@ -97,6 +104,7 @@ Repository Variable `AUTO_DEPLOY=true` 时，`main` 的 push 会在检查通过�
 
 - [实现报告](docs/IMPLEMENTATION_REPORT.md)
 - [内容更新指南](docs/CONTENT_GUIDE.md)
+- [交互作品集成说明](docs/INTERACTIVE_APPS.md)
 - [部署运维清单](docs/DEPLOYMENT_CHECKLIST.md)
 - [阿里云部署指南](docs/DEPLOYMENT_GUIDE.md)
 - [发布前检查记录](docs/PRELAUNCH_REVIEW.md)

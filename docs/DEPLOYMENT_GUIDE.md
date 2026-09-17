@@ -100,7 +100,7 @@ npm run preview
 | 默认错误页 | `404.html` |
 | 错误页 HTTP 状态 | 404 |
 
-**子目录首页是必要配置。** 否则 `/posts/` 等路径可能读到根首页，不能正常访问 SSG 的多页目录。游戏主入口现为 `/projects/conway-soldiers/`；其脚本、图标和音效保留在 `/play/conway-soldiers/` 资源目录，须完整上传。旧 `/play/conway-soldiers/` 页面本身是跳转页。
+**子目录首页是必要配置。** 否则 `/posts/` 等路径可能读到根首页，不能正常访问 SSG 的多页目录。两个游戏主入口分别为 `/projects/conway-soldiers/` 和 `/projects/conway-soldiers-3d/`；脚本、图标和音效放在各自 `/play/<slug>/` 资源目录，须完整上传。`/play/<slug>/` 页面本身是指向正式入口的兼容跳转页。
 
 不要设置 SPA fallback，把所有未知路径都返回首页/200；这是多页静态博客，未知页面应返回自定义 404。[OSS 静态网站配置](https://www.alibabacloud.com/help/en/oss/user-guide/hosting-static-websites)
 
@@ -125,28 +125,34 @@ npm run preview
 
 ### 康威跳棋短链
 
-代码已为正则 `^conways?[_-]?(?:soldier|checker)s?$` 的全部 24 种小写拼写、`coso`，以及旧 `play/conway-soldiers` 入口生成独立目录跳转页。映射集中在 `config/redirects.mjs`，统一目标是 `/projects/conway-soldiers/`。例如：
+代码按 `config/redirects.mjs` 为两个版本生成独立目录跳转页：
 
-- `https://nanoka.tv/coso`
-- `https://nanoka.tv/conway-checker`
-- `https://nanoka.tv/conways_soldiers`
+| 版本 | 短链匹配（不含开头和结尾斜杠） | 短链数量 | 正式目标 |
+| --- | --- | --- | --- |
+| 2D | `^conways?[_-]?(?:soldier\|checker)s?$`，以及 `coso` | 24 + 1 = 25 | `/projects/conway-soldiers/` |
+| 3D | `^conways?[_-]?(?:soldier\|checker)s?[_-]?3d$`，以及 `coso3d` | 72 + 1 = 73 | `/projects/conway-soldiers-3d/` |
+
+另有 `/play/conway-soldiers/` 和 `/play/conway-soldiers-3d/` 两个兼容入口，总计 100 个跳转页面。全部匹配为小写且只覆盖完整路径。例如 `/coso3d`、`/conway-checker3d`、`/conways_soldiers_3d` 都进入 3D 游戏；`/conway-checker` 保持进入 2D 游戏。
 
 静态页通过 `location.replace` 跳转，保留 query 与 hash；禁用 JavaScript 时通过 HTML `meta refresh` 跳转，并提供手动链接。静态 HTML 响应通常是 **200 + 浏览器跳转**，不能自行发出 HTTP 301/302。OSS 开启上面的无尾斜杠目录跳转后，`/coso` 也能先进入 `/coso/`；Astro 本地开发和预览接受这两种路径。所有跳转页均有 noindex，canonical 指向主游戏页，且不进入 sitemap。
 
-正式部署建议在 CDN → 域名管理 → `nanoka.tv` → 缓存配置 → **重写访问 URL** 加下面两条规则，让请求直接到达棋盘：
+**下面的 CDN 配置是可选优化，不是静态跳转生效的前提；修改仓库不会自动配置 CDN。** 如需让短链直接返回 HTTP 重定向，在 CDN → 域名管理 → `nanoka.tv` → 缓存配置 → **重写访问 URL** 配置下面四条规则。已有 2D 规则可保留，只增加 3D 两条：
 
 | 待重写 Path（PCRE，区分大小写） | 目标 Path | 执行规则 |
 | --- | --- | --- |
-| `^/(?:conways?[_-]?(?:soldier|checker)s?\|coso)/?$` | `/projects/conway-soldiers/` | Redirect |
+| `^/(?:conways?[_-]?(?:soldier\|checker)s?\|coso)/?$` | `/projects/conway-soldiers/` | Redirect |
 | `^/play/conway-soldiers/?$` | `/projects/conway-soldiers/` | Redirect |
+| `^/(?:conways?[_-]?(?:soldier\|checker)s?[_-]?3d\|coso3d)/?$` | `/projects/conway-soldiers-3d/` | Redirect |
+| `^/play/conway-soldiers-3d/?$` | `/projects/conway-soldiers-3d/` | Redirect |
 
-**复制正则时去掉 Markdown 表格中为竖线添加的转义。** 第一条可直接复制以下原文：
+**复制正则时去掉 Markdown 表格中为竖线添加的转义。** 两个短链规则可分别复制以下原文：
 
 ```text
 ^/(?:conways?[_-]?(?:soldier|checker)s?|coso)/?$
+^/(?:conways?[_-]?(?:soldier|checker)s?[_-]?3d|coso3d)/?$
 ```
 
-规则匹配 path，不匹配域名或 query，目标保留尾斜杠。不要使用 `break`（它是内部改写），也不要把旧目录规则写成 `^/play/conway-soldiers/.*`，否则会把游戏脚本和音效也重定向走。阿里云这项功能默认是 **302**，文档没有保证普通控制台可直接选择 301；302 已满足短链需求。如需永久 301，应再核实账号可用的边缘脚本/重定向功能。查询参数按普通 Redirect 规则保留，hash 不发送到服务器。[阿里云访问 URL 重写说明](https://help.aliyun.com/zh/cdn/user-guide/create-an-access-url-rewrite-rule)
+规则匹配 path，不匹配域名或 query，目标保留尾斜杠。不要使用 `break`（它是内部改写），也不要把兼容入口规则写成 `^/play/conway-soldiers/.*` 或 `^/play/conway-soldiers-3d/.*`，否则会把游戏脚本和音效也重定向走。阿里云这项功能默认是 **302**，文档没有保证普通控制台可直接选择 301；302 已满足短链需求。如需永久 301，应再核实账号可用的边缘脚本/重定向功能。查询参数按普通 Redirect 规则保留，hash 不发送到服务器。[阿里云访问 URL 重写说明](https://help.aliyun.com/zh/cdn/user-guide/create-an-access-url-rewrite-rule)
 
 调整短链规则后，可用以下命令复核：
 
@@ -155,9 +161,13 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/coso
 curl.exe -sS -D - -o NUL https://nanoka.tv/conways_checkers/
 curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/
 curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
+curl.exe -sS -D - -o NUL https://nanoka.tv/coso3d
+curl.exe -sS -D - -o NUL https://nanoka.tv/conways_checkers_3d/
+curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers-3d/
+curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers-3d/src/app.js
 ```
 
-前三项应得到重定向到 `/projects/conway-soldiers/` 的 Location；最后一项应为正常 JavaScript 响应，不能重定向。另检查 `/conway-checkers-extra/` 仍是 404。
+启用 CDN 规则时，各版本的前三项应得到指向对应正式页面的 Location，第四项应为正常 JavaScript 响应，不能重定向。仅使用静态跳转时，`curl` 可能看到目录补斜杠跳转或 200 HTML，需在浏览器中确认最终地址。再检查 `/conway-checkers-extra/`、`/coso3d-extra/` 仍是 404，并用 `/coso3d/?source=test#rules` 检查 query/hash 保留。
 
 ### 备案与上线内容
 
@@ -176,14 +186,14 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 | URL | 当前用途 | 对应构建产物 |
 | --- | --- | --- |
 | `/projects/` | 作品列表；`projects` 是复数 | `dist/projects/index.html` |
-| `/projects/conway-soldiers/` | 游戏主页面，直接显示棋盘 | `dist/projects/conway-soldiers/index.html` |
-| `/play/conway-soldiers/` | 旧入口的兼容跳转页 | `dist/play/conway-soldiers/index.html` |
-| `/play/conway-soldiers/src/`、`icons/`、`sounds/` | 仍在使用的游戏脚本、样式、图标与音效 | `dist/play/conway-soldiers/` 下相应目录 |
+| `/projects/conway-soldiers/`、`/projects/conway-soldiers-3d/` | 两个游戏主页面，直接显示棋盘 | `dist/projects/<slug>/index.html` |
+| `/play/conway-soldiers/`、`/play/conway-soldiers-3d/` | 兼容跳转页 | `dist/play/<slug>/index.html` |
+| `/play/<slug>/src/`、`icons/`（如有）、`sounds/` | 游戏脚本、样式、图标与音效 | `dist/play/<slug>/` 下相应目录 |
 | `/_astro/` | Astro 生成的带内容哈希的样式、图片、字体等资源 | `dist/_astro/` |
 
-依据：[主入口与旧入口映射](../config/redirects.mjs)、[游戏页面中的资源地址转换](../src/pages/projects/conway-soldiers.astro)、[游戏资源复制脚本](../scripts/prepare-game.mjs)。原游戏构建直接复制 `app.js`、`styles.css`、`move.wav` 等固定文件名，不会自动为它们添加内容哈希。
+依据：[游戏注册表](../config/games.mjs)、[主入口与兼容入口映射](../config/redirects.mjs)、[游戏集成布局](../src/layouts/GameLayout.astro)、[游戏资源复制脚本](../scripts/prepare-games.mjs)。两个游戏的构建直接复制 `app.js`、`styles.css`、`move.wav` 等固定文件名，不会自动为它们添加内容哈希。
 
-**因此，不能把缓存表里的 `/play/conway-soldiers/` 简单替换成 `/projects/conway-soldiers/`。两个目录都存在，但用途不同。** 当前没有 `/project/` 页面。
+**`/projects/<slug>/` 是页面，`/play/<slug>/` 是资源及兼容入口，缓存与刷新时需要同时考虑。** 当前没有 `/project/` 页面。
 
 #### CDN 控制台填写表
 
@@ -193,12 +203,12 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 | --- | --- | --- | --- | --- | --- |
 | 目录 | `/` | 1 分钟（60 秒） | 10 | 以下四项均关闭 | 全站兜底；首页、文章、作品列表、游戏主页面和静态跳转页都能较快更新 |
 | 目录 | `/_astro/` | 1 年（31536000 秒） | 90 | 以下四项均关闭 | 当前此目录使用带内容哈希的资源名，内容变化会产生新 URL，适合长缓存 |
-| 目录 | `/play/conway-soldiers/` | 1 分钟（60 秒） | 80 | 以下四项均关闭 | 游戏资源会以相同 URL 覆盖更新，避免旧脚本、样式或音效长期滞留；也覆盖旧入口的静态跳转页 |
+| 目录 | `/play/` | 1 分钟（60 秒） | 80 | 以下四项均关闭 | 覆盖两个游戏的固定文件名资源与兼容跳转页，后续新增游戏也沿用短缓存 |
 | 文件后缀名 | `xml,txt` | 5 分钟（300 秒） | 30 | 以下四项均关闭 | 覆盖 `/rss.xml`、`/sitemap-index.xml`、`/sitemap-0.xml` 和 `/robots.txt` |
 
 这里的四个选项是：**优先遵循源站缓存策略、忽略源站不缓存标头、客户端跟随 CDN 缓存策略、强制内容重新验证**。全部关闭需与下方 OSS 响应头配套使用。
 
-`/` 是全站路径兜底，不仅匹配首页；多条规则匹配时取高权重。因此 `/projects/conway-soldiers/` 已由权重 10 的规则覆盖，无需再加一条相同的 60 秒规则。`/play/` 规则目前与兜底时间相同，保留它是为了在以后调整全站兜底时，仍明确约束固定文件名游戏资源的缓存时间。[阿里云缓存规则说明](https://help.aliyun.com/zh/cdn/user-guide/configure-the-cdn-cache-expiration-time)
+`/` 是全站路径兜底，不仅匹配首页；多条规则匹配时取高权重。因此两个 `/projects/<slug>/` 已由权重 10 的规则覆盖，无需再加相同的 60 秒规则。现有 `/play/conway-soldiers/` 规则可扩展为 `/play/`，覆盖 3D 与以后新增的游戏；若保留两个精确目录规则，也应为 3D 配置同样的 60 秒 TTL。此项需要在控制台调整，仓库构建不会自动修改现有规则。[阿里云缓存规则说明](https://help.aliyun.com/zh/cdn/user-guide/configure-the-cdn-cache-expiration-time)
 
 例如，`/play/conway-soldiers/src/app.js` 命中权重 80，`/_astro/BaseLayout.<哈希>.css` 命中权重 90，而 `/favicon.svg` 使用兜底的 60 秒。暂不额外添加全站 `js,css,png,svg` 一年缓存规则，也不把整个 `/projects/` 设为长缓存。
 
@@ -209,8 +219,8 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 | OSS 对象范围 | 建议的 Cache-Control | 对应 CDN 时长 |
 | --- | --- | --- |
 | `_astro/` 下带内容哈希的文件 | `public, max-age=31536000, immutable` | 1 年 |
-| 所有 HTML，包括 `projects/conway-soldiers/index.html`、旧入口与短链的 `index.html` | `public, max-age=60` | 正常页面响应 1 分钟 |
-| `play/conway-soldiers/` 下非哈希脚本、样式、图标、音效 | `public, max-age=60` | 1 分钟 |
+| 所有 HTML，包括两个 `projects/<slug>/index.html`、兼容入口与短链的 `index.html` | `public, max-age=60` | 正常页面响应 1 分钟 |
+| `play/` 下两个游戏的非哈希脚本、样式、图标、音效 | `public, max-age=60` | 1 分钟 |
 | `rss.xml`、`sitemap-index.xml`、`sitemap-0.xml`、`robots.txt` | `public, max-age=300` | 5 分钟 |
 | `favicon.svg` 等其他未版本化文件 | `public, max-age=60` | 1 分钟 |
 
@@ -224,7 +234,7 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 
 1. 先上传新资源，再上传引用它们的 HTML，确认 OSS 上的内容和元数据已经更新。
 2. 普通文章发布若需尽快可见，刷新受影响的页面 URL，包括首页、文章列表、文章页和标签页；订阅与站点地图按需一起刷新。
-3. 游戏更新时同时刷新主页面 `https://nanoka.tv/projects/conway-soldiers/` 和资源目录 `https://nanoka.tv/play/conway-soldiers/`。只刷新 `/projects/` 不会刷新游戏资源。如果显式的 `index.html` URL 也曾被访问缓存，需一并刷新或使用对应目录刷新。
+3. 游戏更新时同时刷新其主页面 `https://nanoka.tv/projects/<slug>/` 和资源目录 `https://nanoka.tv/play/<slug>/`，`<slug>` 为 `conway-soldiers` 或 `conway-soldiers-3d`。两个版本均有修改时两组都要检查。只刷新 `/projects/` 不会刷新游戏资源。如果显式的 `index.html` URL 也曾被访问缓存，需一并刷新或使用对应目录刷新。
 4. `/_astro/` 新哈希文件通常无需刷新；保留仍可能被旧页面或回滚版本引用的旧哈希文件，避免发布同步时立即删除它们。
 5. 改缓存规则或 OSS 缓存头后，刷新受影响的存量缓存。CDN 刷新不能清除读者浏览器中已经保存的副本；短 TTL 也不保证已经打开的页面自动更新。[阿里云刷新说明](https://help.aliyun.com/zh/cdn/user-guide/refresh-and-prefetch-resources)
 
@@ -235,6 +245,8 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
 ```powershell
 curl.exe -sS -D - -o NUL https://nanoka.tv/projects/conway-soldiers/
 curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers/src/app.js
+curl.exe -sS -D - -o NUL https://nanoka.tv/projects/conway-soldiers-3d/
+curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers-3d/src/app.js
 curl.exe -sS -D - -o NUL https://nanoka.tv/rss.xml
 curl.exe -sS -D - -o NUL https://nanoka.tv/favicon.svg
 
@@ -349,8 +361,8 @@ AUTO_DEPLOY         # Repository Variable；true 自动发布，false 暂停
 2. 设置生产 `SITE_URL=https://nanoka.tv`，执行 `npm run check`、`npm test`、`npm run build:release`、`npm run test:browser`，或取得对应 commit 的成功 CI artifact。
 3. 在 main 上手动执行真实发布，工作流使用部署角色临时凭证上传 **`dist/` 里面的文件** 到 Bucket 根：根对象应是 `index.html`，不是 `dist/index.html`。
 4. 设置对象 Content-Type / Cache-Control；确认没有上传 `.env`、源码、测试文件或配置文件。
-5. 分别验证 OSS 源站和 CDN 域名，包含 `/`、`/posts/`、一篇文章、中文标签、`/projects/conway-soldiers/`、`/play/conway-soldiers/`、`/about/`、`/rss.xml`、`/robots.txt`、`/sitemap-index.xml`。
-6. 用不存在的地址验证 **HTTP 404** 和自定义错误页；用 `/posts` 验证尾斜线重定向；验证上述短链及旧游戏入口。
+5. 分别验证 OSS 源站和 CDN 域名，包含 `/`、`/posts/`、一篇文章、中文标签、两个 `/projects/<slug>/` 游戏页及 `/play/<slug>/` 兼容入口、`/about/`、`/rss.xml`、`/robots.txt`、`/sitemap-index.xml`；抽查两个游戏的 JS、CSS 和音效是否返回正确内容与 MIME。
+6. 用不存在的地址验证 **HTTP 404** 和自定义错误页；用 `/posts` 验证尾斜线重定向；验证两个版本的短链与兼容入口、说明窗口的跨版本链接，并在浏览器中完成 3D 旋转视角、选子、跳吃与撤销的基本检查。
 7. 检查页面 canonical 与 Open Graph URL 已指向生产域名，robots 没有误留 `Disallow: /`。
 8. 在 HTTPS 下尝试行内/独立公式、代码复制；测试游戏摆子、移动、音效和手机布局。
 

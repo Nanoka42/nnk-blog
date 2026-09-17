@@ -382,6 +382,17 @@ button:active:not(:disabled) {
   padding:34px 38px;
 }
 
+.info-modal a {
+  color:var(--green);
+  text-underline-offset:3px;
+}
+
+.info-modal a:focus-visible {
+  outline:3px solid var(--blue);
+  outline-offset:4px;
+  border-radius:2px;
+}
+
 .close-button {
   position:absolute;
   right:15px;

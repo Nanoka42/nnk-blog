@@ -1,6 +1,6 @@
 import { test as base, expect, type Request } from '@playwright/test';
 import { load } from 'cheerio';
-import { conwayPath, redirectPaths } from '../../config/redirects.mjs';
+import { conwayPath, conway3dPath, redirectPaths, redirects } from '../../config/redirects.mjs';
 
 // Global setup publishes the two API-managed servers after configuration is loaded.
 // Read this at fixture setup so production checks cannot silently target the development server.
@@ -49,48 +49,66 @@ test('production RSS and sitemap exclude draft and removed content', async ({ re
   }
 });
 
-test('all short and legacy links redirect, preserving navigation and working without JavaScript', async ({ page, request, browser, baseURL }) => {
+test('all 2D and 3D short links redirect to their own game, including without JavaScript', async ({ page, request, browser, baseURL }) => {
   // HTTP requests inspect every static fallback without executing refresh or JavaScript.
-  // redirectPaths includes all 25 public short links and the former /play/ entry.
+  // Test both slash forms of every exact alias, including the former /play/ entries.
   for (const path of redirectPaths) for (const suffix of ['', '/']) {
     const route = `/${path}${suffix}`;
+    const target = redirects[`/${path}/`];
     const response = await request.get(route);
     expect(response.status(), route).toBe(200);
     const $ = load(await response.text());
-    expect($('meta[http-equiv="refresh"]').attr('content'), route).toBe(`0;url=${conwayPath}`);
+    expect($('meta[http-equiv="refresh"]').attr('content'), route).toBe(`0;url=${target}`);
     expect($('meta[name="robots"]').attr('content'), route).toContain('noindex');
-    expect(new URL($('link[rel="canonical"]').attr('href')!).pathname, route).toBe(conwayPath);
-    expect($(`main a[href="${conwayPath}"]`).length, route).toBe(1);
+    expect(new URL($('link[rel="canonical"]').attr('href')!).pathname, route).toBe(target);
+    expect($(`main a[href="${target}"]`).length, route).toBe(1);
   }
 
   for (const route of ['/coso', '/conways_checkers/', '/conway-soldier', '/play/conway-soldiers/']) {
     await page.goto(route);
     await expect(page).toHaveURL(new URL(conwayPath, baseURL).href);
   }
+  for (const route of ['/coso3d', '/conways_checkers_3d/', '/conway-soldier-3d', '/conwaychecker3d/', '/play/conway-soldiers-3d/']) {
+    await page.goto(route);
+    await expect(page).toHaveURL(new URL(conway3dPath, baseURL).href);
+  }
   const suffix = '?from=short-link&text=%E6%B5%8B%E8%AF%95#game-test';
-  await page.goto(`/coso${suffix}`);
-  await expect(page).toHaveURL(new URL(conwayPath + suffix, baseURL).href);
+  for (const [alias, target] of [['coso', conwayPath], ['coso3d', conway3dPath]]) {
+    await page.goto(`/${alias}${suffix}`);
+    await expect(page).toHaveURL(new URL(target + suffix, baseURL).href);
+  }
 
   const noScript = await browser.newContext({ baseURL, javaScriptEnabled: false });
   try {
     const fallbackPage = await noScript.newPage();
-    await fallbackPage.goto('/conways_checkers');
-    await expect(fallbackPage).toHaveURL(new URL(conwayPath, baseURL).href);
-    await expect(fallbackPage.locator('#board')).toBeVisible();
+    for (const [alias, target] of [['conways_checkers', conwayPath], ['conways_checkers-3d', conway3dPath]]) {
+      await fallbackPage.goto(`/${alias}`);
+      await expect(fallbackPage).toHaveURL(new URL(target, baseURL).href);
+      await expect(fallbackPage.locator('#board')).toBeVisible();
+    }
   } finally {
     await noScript.close();
   }
 
-  for (const route of ['/conway-checker-extra/', '/coso-extra/']) {
+  for (const route of ['/conway-checker-extra/', '/coso-extra/', '/conway-checker-3d-extra/', '/coso3d-extra/', '/conway_checker__3d/']) {
     expect((await request.get(route)).status(), route).toBe(404);
   }
 });
 
-test('built project route starts the board, loads dynamic assets and exposes registration', async ({ page, baseURL }) => {
+for (const gamePath of [conwayPath, conway3dPath]) test(`built ${gamePath} starts using only local assets and exposes registration`, async ({ page, baseURL }) => {
   const errors: string[] = [];
+  const externalRequests: string[] = [];
+  const loadedAssets = new Set<string>();
   const pending = new Set<Request>();
   const origin = new URL(baseURL!).origin;
   const sameOrigin = (url: string) => new URL(url).origin === origin;
+  // A third-party runtime dependency fails even when the developer machine is online.
+  await page.route('**/*', async (route) => {
+    if (!sameOrigin(route.request().url())) {
+      externalRequests.push(route.request().url());
+      await route.abort('blockedbyclient');
+    } else await route.continue();
+  });
   page.on('pageerror', (error) => errors.push(`Page error: ${error.message}`));
   page.on('request', (request) => { if (sameOrigin(request.url())) pending.add(request); });
   page.on('requestfinished', (request) => pending.delete(request));
@@ -100,12 +118,14 @@ test('built project route starts the board, loads dynamic assets and exposes reg
   });
   page.on('response', (response) => {
     if (sameOrigin(response.url()) && response.status() >= 400) errors.push(`HTTP ${response.status()}: ${response.url()}`);
+    if (sameOrigin(response.url()) && response.status() === 200) loadedAssets.add(new URL(response.url()).pathname);
   });
-  const response = await page.goto(conwayPath);
+  const response = await page.goto(gamePath);
   expect(response?.status()).toBe(200);
   await expect(page.locator('#board')).toBeVisible();
   await page.locator('#board').focus();
   await page.keyboard.press('ArrowDown');
+  if (gamePath === conway3dPath) await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Space');
   await page.locator('#primary-action').click();
   await expect(page.locator('#mode-name')).toHaveText('跳棋模式');
@@ -115,8 +135,56 @@ test('built project route starts the board, loads dynamic assets and exposes reg
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true);
   }
   await expect(page.getByRole('link', { name: /粤ICP备2026138999号/ })).toBeVisible();
-  await page.getByRole('button', { name: '规则与关于', exact: true }).click();
+  await page.locator('#info').click();
   await expect(page.locator('#info-dialog')).toContainText('真理院七叶');
+  const otherGame = gamePath === conwayPath ? conway3dPath : conwayPath;
+  const otherGameLink = page.locator(`#info-dialog a[href="${otherGame}"]`);
+  await expect(otherGameLink).toHaveCount(1);
   await expect.poll(() => pending.size, { message: 'Game assets should finish loading' }).toBe(0);
+  const slug = gamePath.split('/').filter(Boolean).at(-1);
+  expect(loadedAssets.has(`/play/${slug}/src/app.js`)).toBe(true);
+  expect([...loadedAssets].some((path) => path.startsWith(`/play/${slug}/sounds/`) && path.endsWith('.wav'))).toBe(true);
+  await otherGameLink.click();
+  await expect(page).toHaveURL(new URL(otherGame, baseURL).href);
+  await expect(page.locator('#board')).toBeVisible();
+  expect(externalRequests).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('3D controls remain reachable above the site footer on short screens', async ({ page }) => {
+  for (const [width, height] of [[320, 568], [390, 580], [390, 600], [844, 390]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto(conway3dPath);
+    const checkFooter = async () => {
+      const app = await page.locator('.app').boundingBox();
+      const footer = await page.locator('.game-site-footer').boundingBox();
+      expect(footer!.y, `${width}×${height}: footer must follow the game`).toBeGreaterThanOrEqual(app!.y + app!.height - 1);
+      for (const selector of ['#primary-action', '#secondary-action', '#tertiary-action']) {
+        const button = page.locator(selector);
+        await button.scrollIntoViewIfNeeded();
+        expect(await button.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return element.contains(document.elementFromPoint(box.x + box.width / 2, box.bottom - 3));
+        }), `${width}×${height}: ${selector} must not be covered`).toBe(true);
+      }
+    };
+    await checkFooter();
+    await page.locator('#tertiary-action').click();
+    await page.locator('#primary-action').click();
+    await expect(page.locator('#mode-name')).toHaveText('跳棋模式');
+    await checkFooter();
+  }
+});
+
+test('published project listing and sitemap link to both playable versions', async ({ page, request }) => {
+  await page.goto('/projects/');
+  for (const path of [conwayPath, conway3dPath]) {
+    await expect(page.locator(`.project-card h2 a[href="${path}"]`)).toBeVisible();
+  }
+  const response = await request.get('/sitemap-0.xml');
+  expect(response.status()).toBe(200);
+  const $ = load(await response.text(), { xmlMode: true });
+  const routes = $('loc').toArray().map((node) => new URL($(node).text()).pathname);
+  for (const path of [conwayPath, conway3dPath]) expect(routes).toContain(path);
+  expect(routes.some((path) => Object.hasOwn(redirects, path))).toBe(false);
 });

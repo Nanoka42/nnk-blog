@@ -17,7 +17,10 @@ const provider = process.env.ALIBABA_OIDC_PROVIDER_ARN.match(/^acs:ram::(\d+):oi
 const role = process.env.ALIBABA_DEPLOY_ROLE_ARN.match(/^acs:ram::(\d+):role\/[\w-]+$/);
 assert.ok(provider && role && provider[1] === role[1], 'Provider and role must be valid ARNs in the same account');
 
-const requiredFiles = ['index.html', '404.html', 'posts/index.html', 'about/index.html', 'projects/index.html', 'projects/conway-soldiers/index.html', 'play/conway-soldiers/src/app.js', 'play/conway-soldiers/sounds/move.wav', 'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml'];
+const gameFiles = ['conway-soldiers', 'conway-soldiers-3d'].flatMap((slug) => [
+  `projects/${slug}/index.html`, `play/${slug}/src/app.js`, `play/${slug}/src/styles.css`, `play/${slug}/sounds/move.wav`,
+]);
+const requiredFiles = ['index.html', '404.html', 'posts/index.html', 'about/index.html', 'projects/index.html', ...gameFiles, 'coso/index.html', 'coso3d/index.html', 'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml'];
 for (const file of requiredFiles) assert.ok((await lstat(join('dist', file))).isFile(), `Missing artifact: ${file}`);
 assert.ok((await readdir('dist/_astro')).length > 0, 'Missing hashed Astro resources');
 let count = 0;

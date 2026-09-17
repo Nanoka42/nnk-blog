@@ -76,6 +76,7 @@
   .post-thumb { width: 140px; flex-shrink: 0; }
   .post-thumb img { aspect-ratio: 16 / 9; object-fit: cover; border-radius: 5px; }
   .project-card { display: grid; grid-template-columns: 1.03fr 1fr; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); }
+  .project-card + .project-card { margin-top: 1.5rem; }
   .project-cover { display: flex; align-items: center; background: #d5be91; }
   .project-cover img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
   .project-info { padding: 1.8rem 2rem; }

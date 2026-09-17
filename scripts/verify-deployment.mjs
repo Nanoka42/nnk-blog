@@ -53,17 +53,24 @@ export async function createDeploymentChecks(distDir = 'dist') {
     ['/posts/', 'posts/index.html'],
     ['/about/', 'about/index.html'],
     ['/projects/conway-soldiers/', 'projects/conway-soldiers/index.html'],
+    ['/projects/conway-soldiers-3d/', 'projects/conway-soldiers-3d/index.html'],
+    ['/coso/', 'coso/index.html', '/projects/conway-soldiers/'],
+    ['/coso3d/', 'coso3d/index.html', '/projects/conway-soldiers-3d/'],
     ...[article, tag].filter(Boolean).map((file) => [directoryRoute(file), file]),
   ];
   const fixedAssets = [
     'play/conway-soldiers/src/app.js',
     'play/conway-soldiers/src/styles.css',
     select(/^play\/conway-soldiers\/sounds\/.+\.wav$/, 'a game WAV asset'),
+    'play/conway-soldiers-3d/src/app.js',
+    'play/conway-soldiers-3d/src/styles.css',
+    select(/^play\/conway-soldiers-3d\/sounds\/.+\.wav$/, 'a 3D game WAV asset'),
     'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml',
     ...assets,
   ];
-  const checks = await Promise.all([...pages, ...fixedAssets.map((file) => [`/${file}`, file])].map(async ([path, file]) => ({
+  const checks = await Promise.all([...pages, ...fixedAssets.map((file) => [`/${file}`, file])].map(async ([path, file, aliasTarget]) => ({
     path,
+    ...(aliasTarget ? { aliasTarget } : {}),
     status: 200,
     body: await readFile(join(distDir, file)),
     mime: mimeTypes[extname(file)],
@@ -127,9 +134,28 @@ async function checkResponse(origin, check, { fetchImpl, requestTimeoutMs, signa
   const requestSignal = AbortSignal.any([timeout.signal, ...(signal ? [signal] : [])]);
   try {
     requestSignal.throwIfAborted();
-    const url = new URL(encodedPath(check.path), origin);
+    const queryStart = check.path.indexOf('?');
+    const url = new URL(encodedPath(queryStart < 0 ? check.path : check.path.slice(0, queryStart)), origin);
+    // Preserve an explicitly tested query; never introduce cache-busting parameters.
+    if (queryStart >= 0) url.search = check.path.slice(queryStart);
     const response = await withinSignal(fetchImpl(url, { redirect: 'manual', signal: requestSignal }), requestSignal);
     const errors = [];
+    // A CDN may redirect a short link before OSS serves its static fallback.
+    // Only known aliases allow this alternative; normal pages/assets stay byte-exact.
+    if (check.aliasTarget && [301, 302, 307, 308].includes(response.status)) {
+      const target = new URL(check.aliasTarget, origin);
+      target.search = url.search;
+      const location = response.headers.get('location');
+      try {
+        if (!location || new URL(location, url).href !== target.href) {
+          errors.push('alias redirect must retain the requested origin and query and point to its configured game page');
+        }
+      } catch {
+        errors.push('invalid alias redirect Location');
+      }
+      await withinSignal(response.body?.cancel(), requestSignal);
+      return errors;
+    }
     if (check.redirect) {
       if (![301, 302, 307, 308].includes(response.status)) errors.push(`expected a directory redirect, received HTTP ${response.status}`);
       const location = response.headers.get('location');

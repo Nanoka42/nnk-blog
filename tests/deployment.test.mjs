@@ -16,6 +16,8 @@ before(async () => {
     'projects/conway-soldiers/index.html', 'posts/first-post/index.html', 'tags/杂谈/index.html',
     'play/conway-soldiers/src/app.js', 'play/conway-soldiers/src/styles.css',
     'play/conway-soldiers/sounds/move.wav', 'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml',
+    'projects/conway-soldiers-3d/index.html', 'coso/index.html', 'coso3d/index.html',
+    'play/conway-soldiers-3d/src/app.js', 'play/conway-soldiers-3d/src/styles.css', 'play/conway-soldiers-3d/sounds/move.wav',
     '_astro/site.hash.css', '_astro/avatar.hash.webp', '_astro/math.hash.woff2',
   ];
   await Promise.all(files.map(async (file) => {
@@ -54,10 +56,13 @@ test('release checks select real Unicode routes, game files, and Astro asset cat
   assert.ok(checks.some((check) => check.path === '/tags/杂谈/'));
   assert.ok(checks.some((check) => check.path === '/posts/first-post/'));
   assert.ok(checks.some((check) => check.path.endsWith('.wav')));
+  for (const path of ['/projects/conway-soldiers-3d/', '/coso3d/', '/play/conway-soldiers-3d/src/app.js', '/play/conway-soldiers-3d/src/styles.css', '/play/conway-soldiers-3d/sounds/move.wav']) {
+    assert.ok(checks.some((check) => check.path === path), `Missing 3D deployment check: ${path}`);
+  }
   assert.equal(checks.filter((check) => check.immutable).length, 3);
   const result = await verifyDeployment(origin, { checks, fetchImpl: mockFetch() });
   assert.equal(result.ok, true);
-  assert.equal(result.checked, 19);
+  assert.equal(result.checked, 25);
 });
 
 test('accepts standard JavaScript and WAV MIME aliases', async () => {
@@ -68,6 +73,62 @@ test('accepts standard JavaScript and WAV MIME aliases', async () => {
   assert.equal(result.ok, true);
 });
 
+test('both game aliases accept static release HTML or a correctly targeted CDN redirect', async () => {
+  const aliases = checks.filter((check) => check.aliasTarget);
+  assert.deepEqual(aliases.map(({ path, aliasTarget }) => [path, aliasTarget]), [
+    ['/coso/', '/projects/conway-soldiers/'],
+    ['/coso3d/', '/projects/conway-soldiers-3d/'],
+  ]);
+  for (const status of [301, 302, 307, 308]) {
+    const result = await verifyDeployment(origin, { checks, fetchImpl: mockFetch((check, response) => {
+      if (!check.aliasTarget) return;
+      response.body = null;
+      response.status = status;
+      response.headers = { location: status === 301 ? `${origin}${check.aliasTarget}` : check.aliasTarget };
+    }) });
+    assert.equal(result.ok, true, `HTTP ${status}: ${JSON.stringify(result.failures)}`);
+  }
+});
+
+test('alias CDN redirects preserve explicit query parameters without adding a cache bypass', async () => {
+  const query = '?from=short-link&text=%E6%B5%8B%E8%AF%95';
+  for (const alias of checks.filter((check) => check.aliasTarget)) {
+    const selected = [{ ...alias, path: `${alias.path}${query}` }];
+    for (const preserveQuery of [true, false]) {
+      const result = await verifyDeployment(origin, {
+        checks: selected,
+        fetchImpl: async (url, options) => {
+          assert.equal(options.redirect, 'manual');
+          assert.equal(url.search, query);
+          return new Response(null, { status: 302, headers: { location: alias.aliasTarget + (preserveQuery ? query : '') } });
+        },
+      });
+      assert.equal(result.ok, preserveQuery, JSON.stringify(result.failures));
+      if (!preserveQuery) assert.match(result.failures[0].errors[0], /retain.*query/);
+    }
+  }
+});
+
+test('alias redirects reject the other game, an OSS hostname, credentials, and a missing Location', async () => {
+  for (const alias of checks.filter((check) => check.aliasTarget)) {
+    for (const location of [
+      alias.aliasTarget.endsWith('-3d/') ? '/projects/conway-soldiers/' : '/projects/conway-soldiers-3d/',
+      `https://oss-origin.example${alias.aliasTarget}`,
+      `https://user:password@nanoka.example${alias.aliasTarget}`,
+      undefined,
+    ]) {
+      const selected = [alias];
+      const result = await verifyDeployment(origin, { checks: selected, fetchImpl: mockFetch((check, response) => {
+        response.body = null;
+        response.status = 302;
+        response.headers = location ? { location } : {};
+      }, selected) });
+      assert.equal(result.ok, false);
+      assert.match(result.failures[0].errors[0], /alias redirect must retain/);
+    }
+  }
+});
+
 test('a release without articles or optional assets accepts English-only tags and no tags', async (t) => {
   const minimal = await mkdtemp(join(tmpdir(), 'nanoka-deployment-minimal-'));
   t.after(() => rm(minimal, { recursive: true, force: true }));
@@ -76,6 +137,8 @@ test('a release without articles or optional assets accepts English-only tags an
     'projects/conway-soldiers/index.html', 'tags/notes/index.html',
     'play/conway-soldiers/src/app.js', 'play/conway-soldiers/src/styles.css',
     'play/conway-soldiers/sounds/move.wav', 'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml',
+    'projects/conway-soldiers-3d/index.html', 'coso/index.html', 'coso3d/index.html',
+    'play/conway-soldiers-3d/src/app.js', 'play/conway-soldiers-3d/src/styles.css', 'play/conway-soldiers-3d/sounds/move.wav',
   ];
   await Promise.all(files.map(async (file) => {
     await mkdir(dirname(join(minimal, file)), { recursive: true });
@@ -107,6 +170,9 @@ const errors = [
   ['long HTML caching', '/', (response) => { response.headers['cache-control'] = 'public, max-age=31536000'; }, /max-age=60/],
   ['missing immutable cache directive', '/_astro/site.hash.css', (response) => { response.headers['cache-control'] = 'public, max-age=31536000'; }, /missing immutable/],
   ['short XML caching', '/rss.xml', (response) => { response.headers['cache-control'] = 'public, max-age=60'; }, /max-age=300/],
+  ['stale alias fallback HTML', '/coso3d/', (response) => { response.body = 'outdated alias'; }, /bytes differ/],
+  ['redirecting a regular game asset', '/play/conway-soldiers-3d/src/app.js', (response) => { response.status = 302; response.headers.location = '/projects/conway-soldiers-3d/'; }, /expected HTTP 200/],
+  ['an unsupported alias redirect status', '/coso3d/', (response) => { response.status = 303; response.headers.location = '/projects/conway-soldiers-3d/'; }, /expected HTTP 200/],
 ];
 
 for (const [description, path, mutate, expected] of errors) {

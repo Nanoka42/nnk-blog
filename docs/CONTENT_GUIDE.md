@@ -185,7 +185,7 @@ npm run preview
 →（未来启用的部署 job）上传 OSS → CDN 更新
 ```
 
-当前 Actions **只验证与保存产物，不会上传阿里云**。Git 初始化和远程仓库创建请按部署指南完成；本次没有创建远程仓库或推送。
+当前 Actions 会验证并保存产物；是否自动上传阿里云由 `AUTO_DEPLOY` 控制，手动运行也可先预演。发布方式见[部署运维清单](DEPLOYMENT_CHECKLIST.md)。
 
 正式发布使用 `SITE_URL=https://nanoka.tv`，并运行 `npm run build:release`。普通 `npm run build` 支持未配置域名的本地构建；这种构建使用 localhost 绝对链接并禁止索引，不能直接用于上线。
 
@@ -195,16 +195,17 @@ npm run preview
 
 1. 把封面放到 `assets/`，在 `src/config.ts` import。
 2. 给 `projects` 数组添加项目对象：`slug`、`title`、`englishTitle`、`description`、`tags`、`cover`、`coverAlt`、`playUrl`。
-3. 创建 `src/pages/projects/<slug>.astro` 作为作品主入口，根据作品需要直接展示交互内容或介绍。
-4. 如果是另一个静态子项目，扩展构建准备脚本，为其资源安排稳定目录。页面 URL 不必与资源目录相同；不要把运行时服务放进静态博客。
+3. 独立交互作品的源码放到 `apps/<slug>/`，保持自己的入口、开发服务、构建和测试命令。不要再把子项目堆到博客根目录。
+4. 在 `config/games.mjs` 注册可静态构建的游戏，创建 `src/pages/projects/<slug>.astro` 并复用 `GameLayout.astro`。页面入口为 `/projects/<slug>/`，资源为 `/play/<slug>/`；详细约定见[交互作品集成说明](INTERACTIVE_APPS.md)。普通作品介绍页可直接使用博客布局。
+5. 如需短链，在 `config/redirects.mjs` 添加精确映射；同步构建检查、浏览器回归和部署验收，再考虑部署指南中的可选 CDN 规则。
 
 首页与作品列表自动使用 `projects` 数组。新增作品请填写真实内容，不保留参考作品的介绍。
 
-康威跳棋的主入口为 `/projects/conway-soldiers/`，直接显示棋盘。`conway-notes` 文章已经移除，作品页面不再提供「阅读作品笔记」链接。封面保存在 `assets/conway_checker_cover.png`，不依赖文章目录。
+2D 康威跳棋的主入口为 `/projects/conway-soldiers/`，3D 版为 `/projects/conway-soldiers-3d/`，都直接显示棋盘。首页和作品列表分别展示两个版本；游戏内部说明窗口也互相链接。封面保存在 `assets/`，不依赖文章目录。
 
-康威跳棋的原始文件仍在 `conway_checker_game/`。修改它的源码后，重新运行根 `npm run dev` 或 `npm run build`，即可重新集成。根开发服务不监听游戏源目录以重建游戏；需要频繁修改游戏时，优先用子项目自己的 `npm run dev`。
+两个游戏的源码分别位于 `apps/conway-soldiers/` 和 `apps/conway-soldiers-3d/`。修改源码后，重新运行根 `npm run dev` 或 `npm run build` 即可重新集成。根开发服务不监听游戏源目录以重建游戏；需要频繁修改游戏时，优先用 `npm --prefix apps/<slug> run dev`。
 
-页面使用的游戏资源仍生成到 `public/play/conway-soldiers/`。旧 `/play/conway-soldiers/` 页面已成为兼容跳转入口；`config/redirects.mjs` 同时集中定义 25 个短链。调整这些路由时应同步部署指南中的 CDN 规则，并重新运行构建与浏览器检查。
+游戏资源生成到 `public/play/<slug>/`，`/play/<slug>/` 页面本身是指向正式入口的兼容跳转页。`config/redirects.mjs` 集中定义 2D 的 25 个短链、3D 的 73 个短链和两个兼容入口。调整这些路由时应同步部署指南中的 CDN 规则，并重新运行构建与浏览器检查。
 
 不要修改 `public/play/`、`.generated/`、任何 `dist/` 中的文件，下一次准备/构建会覆盖它们。游戏信息卡片与原项目 README 的制作 / 图标美术署名已统一为「真理院七叶」。
 

@@ -4,11 +4,16 @@ import { resolve, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'cheerio';
 import { siteUrl, isLocalSite } from '../config/site.mjs';
-import { redirects, conwayPath } from '../config/redirects.mjs';
+import { redirects, conwayPath, conway3dPath } from '../config/redirects.mjs';
 import { icpRegistration } from '../config/registration.mjs';
 
 const output = fileURLToPath(new URL('../dist/', import.meta.url));
-const required = ['index.html', 'posts/index.html', 'projects/index.html', 'projects/conway-soldiers/index.html', 'play/conway-soldiers/src/app.js', 'play/conway-soldiers/sounds/move.wav', 'about/index.html', '404.html', 'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml', ...Object.keys(redirects).map((path) => `${path.slice(1)}index.html`)];
+const gamePaths = [conwayPath, conway3dPath];
+const gameArtifacts = gamePaths.flatMap((path) => {
+  const slug = path.split('/').filter(Boolean).at(-1);
+  return [`${path.slice(1)}index.html`, ...['src/app.js', 'src/engine.js', 'src/styles.css', 'sounds/move.wav'].map((asset) => `play/${slug}/${asset}`)];
+});
+const required = ['index.html', 'posts/index.html', 'projects/index.html', ...gameArtifacts, 'about/index.html', '404.html', 'rss.xml', 'robots.txt', 'sitemap-index.xml', 'sitemap-0.xml', ...Object.keys(redirects).map((path) => `${path.slice(1)}index.html`)];
 for (const file of required) assert.ok((await stat(join(output, file))).isFile(), file);
 const files = await readdir(output, { recursive: true });
 assert.ok(!files.some((file) => /markdown-regression|regression-only|conway-notes/.test(file)), 'draft or removed route leaked');
@@ -32,10 +37,15 @@ for (const file of files.filter((file) => /\.(html|xml)$/.test(file))) {
   const noindex = $('meta[name=robots]').attr('content')?.includes('noindex') || false;
   assert.equal(noindex, isLocalSite || Boolean(redirectTarget) || route === '/404.html', `${file}: indexing policy`);
   if (redirectTarget) assert.equal($('meta[http-equiv=refresh]').attr('content'), `0;url=${redirectTarget}`, `${file}: redirect destination`);
-  if (route === conwayPath) {
+  if (gamePaths.includes(route)) {
     assert.equal($('#board').length, 1, 'primary project route must contain the game');
     assert.equal($('.rule-diagram').length, 0, 'removed rule diagram');
     assert.equal($('.credits strong').text(), '真理院七叶', 'game credit');
+    const otherGame = route === conwayPath ? conway3dPath : conwayPath;
+    assert.equal($(`#info-dialog a[href="${otherGame}"]`).length, 1, `${file}: other game link in instructions`);
+  }
+  if (route === '/projects/') {
+    for (const path of gamePaths) assert.ok($(`.project-card a[href="${path}"]`).length, `${path}: missing project entry`);
   }
   const links = $('a[href],img[src],script[src],link[href],source[src],audio[src],video[src]').toArray().map((node) => $(node).attr('href') || $(node).attr('src'));
   for (const node of $('[srcset]').toArray()) {
@@ -59,7 +69,7 @@ for (const file of files.filter((file) => /\.(html|xml)$/.test(file))) {
 }
 const sitemap = load(await readFile(join(output, 'sitemap-0.xml'), 'utf8'), { xmlMode: true });
 const listed = sitemap('loc').toArray().map((node) => new URL(sitemap(node).text()).pathname);
-assert.ok(listed.includes(conwayPath), 'game must be discoverable');
+for (const path of gamePaths) assert.ok(listed.includes(path), `${path}: game must be discoverable`);
 assert.ok(!listed.some((path) => redirects[path] || path === '/404.html'), 'redirects and 404 must not appear in sitemap');
 for (const file of ['rss.xml', 'sitemap-index.xml', 'sitemap-0.xml']) {
   const xml = load(await readFile(join(output, file), 'utf8'), { xmlMode: true });

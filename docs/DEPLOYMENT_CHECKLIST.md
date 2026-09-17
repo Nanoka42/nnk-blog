@@ -4,6 +4,8 @@
 
 用户已确认 OIDC、实际上传、OSS 源站和 CDN 验收全部通过，网站与游戏正常访问。当前进入日常维护阶段；初次接入时的排错过程保留在 Git 历史中。基础配置见 [部署指南](DEPLOYMENT_GUIDE.md)，构建概念见 [构建与部署说明](BUILD_AND_DEPLOY_EXPLAINED.md)。
 
+上述记录对应此前已发布的博客和 2D 游戏。新增 3D 游戏及 `apps/` 目录迁移仍需随本次提交构建、发布和验收；本地集成完成不代表云端已更新。正式 3D 入口是 `/projects/conway-soldiers-3d/`。
+
 ## 1. 发布方式
 
 工作流仍名为 **Check and build**，位于 [.github/workflows/ci.yml](../.github/workflows/ci.yml)。
@@ -78,6 +80,8 @@ production 环境继续限制 **Selected branches and tags → Branch → main**
 
 CDN 验收最多等待约 340 秒，使用正常 URL，不加随机参数绕过缓存。当前没有自动刷新 CDN API；一般更新等待短 TTL 即可，修改缓存规则或需立即失效时可在 CDN 控制台刷新相关路径。
 
+两个游戏的 `/play/conway-soldiers/`、`/play/conway-soldiers-3d/` 都应使用 60 秒短缓存；可将原 2D CDN 目录规则扩展为 `/play/`。需要刷新时，同时刷新受影响的 `/projects/<slug>/` 页面与 `/play/<slug>/` 资源。具体设置和可选的 3D HTTP 重定向规则见[部署指南](DEPLOYMENT_GUIDE.md#康威跳棋短链)，代码不会自动修改控制台配置。
+
 若上传或线上验收失败，Actions 会失败；已经上传的对象不会自动回滚。按第一个失败步骤排查，再决定修复配置、重新发布或恢复上一版本。
 
 ## 5. 查看线上状态
@@ -93,6 +97,15 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/does-not-exist-check/
 ```
 
 预期分别为：200 HTML、重定向到 HTTPS、200 HTML、跳转到 `/posts/`、404 HTML。源站排查时换成 `https://oss-origin.nanoka.tv`。直接请求 OSS 时，HEAD（`curl -I`）可能读到桶/目录对象的元数据，不等同于静态网站 GET；检查页面请保留上述 GET 写法。
+
+本次 3D 集成发布后还应确认：
+
+- 首页与作品列表同时展示两个游戏，正式页面均能加载棋盘。
+- `/coso3d`、`/conways_checkers_3d/`、`/play/conway-soldiers-3d/` 最终进入 `/projects/conway-soldiers-3d/`，2D 短链仍进入 2D 页面；查询参数与 hash 在浏览器跳转后保留。
+- 两个游戏说明窗口中的跨版本链接正确；3D 视角操作、跳吃、撤销与音效正常。
+- 两个 `/play/<slug>/src/app.js` 返回 JavaScript，音效返回 WAV，而非误被跳转规则改成 HTML；不存在的近似短链返回 404。
+
+未配置 CDN HTTP 规则时，短链返回 200 HTML 后自动跳转是预期行为。无尾斜杠路径沿用 OSS 目录 Redirect 配置。
 
 如需逐字节验收，下载已部署运行的 `dist-SHA` artifact 并解压，再执行：
 

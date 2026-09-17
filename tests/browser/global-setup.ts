@@ -99,7 +99,8 @@ async function startServer(command: ServerCommand) {
 export default async function globalSetup() {
   try {
     await access(new URL('../../dist/index.html', import.meta.url));
-    await access(new URL('../../.generated/conway.html', import.meta.url));
+    await access(new URL('../../.generated/conway-soldiers.html', import.meta.url));
+    await access(new URL('../../.generated/conway-soldiers-3d.html', import.meta.url));
   } catch {
     throw new Error('Browser tests require built dist and game files. Run npm run build first.');
   }

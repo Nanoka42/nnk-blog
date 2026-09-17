@@ -1,6 +1,7 @@
 import avatar from '../assets/nanoka_avatar_512.jpg';
 import conwayCover from '../assets/conway_checker_cover.png';
-import { conwayPath } from '../config/redirects.mjs';
+import conway3dCover from '../assets/conway-soldiers-3d-cover.svg';
+import { conwayPath, conway3dPath } from '../config/redirects.mjs';
 
 export const profile = {
   name: '微羽笔记本',
@@ -16,6 +17,15 @@ export const profile = {
 };
 
 export const projects = [{
+  slug: 'conway-soldiers-3d',
+  title: '康威跳棋 3D',
+  englishTitle: 'Conway’s Soldiers 3D',
+  description: '多一个维度，能走多远？在三维格点中向第七层进发。',
+  tags: ['交互作品', '数学', '三维'],
+  cover: conway3dCover,
+  coverAlt: '三维格点中的棋子与沿坐标轴向上跳跃的路径',
+  playUrl: conway3dPath,
+}, {
   slug: 'conway-soldiers',
   title: '康威跳棋',
   englishTitle: 'Conway’s Soldiers',
