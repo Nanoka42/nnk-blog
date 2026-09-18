@@ -191,7 +191,12 @@ export class Renderer {
         for (const x of [minX, 0, maxX]) if (x >= minX && x <= maxX) this.worldLine(c.point(x, 0), c.point(x, 0, slice), `${style.color}24`, 1, [2, 5]);
       }
     }
-    for (let x = minX; x <= maxX; x++) this.worldLine(c.point(x, v0), c.point(x, v1), x === 0 ? '#8aaca429' : '#8aaca412', x === 0 ? 1 : .65);
+    for (let x = minX; x <= maxX; x++) {
+      // A full XY board has no empty upper half to reveal the vertical axis.
+      // Give Y the same emphasis as X so their origin remains easy to locate.
+      const yAxis = c.plane === 'XY' && x === 0;
+      this.worldLine(c.point(x, v0), c.point(x, v1), yAxis ? '#89d9bc65' : x === 0 ? '#8aaca429' : '#8aaca412', yAxis ? 1.5 : x === 0 ? 1 : .65);
+    }
     for (let v = minV; v <= maxV; v++) {
       const heightRail = c.plane === 'XZ';
       const color = heightRail ? v === 0 ? '#89d9bc65' : v === 7 ? '#d3af6259' : v === 8 ? '#ad858a28' : v < 0 ? '#9acbb11a' : '#b5ced414'

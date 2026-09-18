@@ -1,6 +1,6 @@
 {
   "name": "conway-soldiers-3d",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "type": "module",
   "description": "零运行依赖、离线资源的三维康威跳棋",

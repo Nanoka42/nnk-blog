@@ -533,9 +533,11 @@ test('XY grid treats Z=0/7/8 as whole planes and uses Y coordinate labels', () =
     assert.ok(lines.every(line => !line.dash?.length));
     assert.ok(lines.every(line => !['#d3af6259', '#ad858a28'].includes(line.color)));
     const reference = lines.filter(line => line.color === '#89d9bc65');
-    assert.equal(reference.length, 1);
-    assert.equal(reference[0].a[1], 0); assert.equal(reference[0].b[1], 0);
-    assert.equal(reference[0].width, 1.5);
+    assert.equal(reference.length, 2);
+    for (const axis of [0, 1]) {
+      const rail = reference.find(line => line.a[axis] === 0 && line.b[axis] === 0);
+      assert.ok(rail); assert.equal(rail.width, 1.5);
+    }
   }
 });
 
