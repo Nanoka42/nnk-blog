@@ -47,6 +47,8 @@ npm --prefix apps/conway-soldiers-3d run dev
 
 ## 添加另一个静态交互作品
 
+两个康威跳棋的独立仓库发布方式见本文末尾的“源码独立发布”；下面说明的是向博客集成一个新作品。
+
 1. 创建 `apps/<slug>/`，提供 `index.html`、运行时资源和 `scripts/build.mjs`，并用 `npm run build` 调用它；构建应把可发布文件写入该项目的 `dist/`，清除过期产物，保持以 `./` 开头的相对 HTML 资源引用。集成准备脚本使用 Node 直接执行这个构建文件。
 2. 在 `config/games.mjs` 中注册 `slug` 和源码目录 `source`；正式入口和资源前缀会按 slug 自动派生。准备脚本会读取注册表，无需为每个游戏复制整套集成脚本。
 3. 在 `assets/` 添加封面，在 `src/config.ts` 的 `projects` 中添加真实的作品标题、说明、标签、封面和正式 `playUrl`。
@@ -63,3 +65,11 @@ npm --prefix apps/conway-soldiers-3d run dev
 静态跳转页用 `location.replace` 保留查询参数与片段标识符，禁用 JavaScript 时提供 `meta refresh` 与手动链接。静态托管下，这通常是 HTTP 200 后的浏览器跳转；如需 HTTP 302，可按部署指南添加 CDN 规则。无尾斜杠路径依赖现有 OSS 目录首页与 Redirect 配置。
 
 两个游戏的资源使用固定文件名，沿用 60 秒短缓存。更新游戏时应同时考虑 `/projects/<slug>/` 主页面和 `/play/<slug>/` 资源目录；只刷新主页面不足以更新缓存中的脚本。源码迁移不改变现有 2D 的线上 URL，也不需要把 `apps/` 上传到 OSS。
+
+## 源码独立发布
+
+两个康威跳棋以本博客仓库为唯一日常源码维护入口；`apps/conway-soldiers/` 与 `apps/conway-soldiers-3d/` 仍是普通目录，不是嵌套 Git 仓库或 submodule。维护者通过 `git subtree` 将各目录发布为对应的独立 GitHub 仓库，供单独克隆、展示和版本发布。
+
+目前采用手动同步：博客提交通过 CI 后，再将两个目录分别推送到 `Nanoka42/conway-soldiers` 和 `Nanoka42/conway-soldiers-3d`。博客 push 只会触发现有的检查与部署，不会自动更新独立源码仓库；独立仓库 main 也不接收日常直接修改。两个仓库的 README、贡献说明等文件，同样先在这里的 app 目录中修改。
+
+首次建仓与逐步命令、日常维护、失败重试和回滚，见[康威跳棋发布与维护手册](CONWAY_APPS_PUBLISHING_GUIDE.md)。源码独立发布沿用本页描述的构建链路与正式页面地址，无需增加线上部署。

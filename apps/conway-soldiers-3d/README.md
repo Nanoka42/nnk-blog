@@ -4,11 +4,17 @@
 
 游戏提供两种可随时切换的工作面：**XZ 纵切面**用于观察高度与沿 Y 的邻层，**XY 横切面**用于查看同一高度内的布局与沿 Z 的邻层。XY 也便于检查绕 Z 轴旋转后相似的局部结构。切换保留摄像机中心、旋转和缩放；有选子时，新工作面经过该棋子并保留选择，无选子时取最接近视图中心的整数切片。
 
-本项目位于博客仓库的 `apps/conway-soldiers-3d/`，可独立运行；[二维版本](../conway-soldiers/) 是并列的独立项目。博客入口为 [康威跳棋 3D](https://nanoka.tv/projects/conway-soldiers-3d/)，两个游戏的说明窗口可以互相跳转。
+本项目可独立运行；[二维版本](https://github.com/Nanoka42/nnk-blog/tree/main/apps/conway-soldiers) 是并列的独立项目。博客入口为 [康威跳棋 3D](https://nanoka.tv/projects/conway-soldiers-3d/)，两个游戏的说明窗口可以互相跳转。
+
+## 源码与维护入口
+
+**源码统一在 [Nanoka42/nnk-blog 的 apps/conway-soldiers-3d/](https://github.com/Nanoka42/nnk-blog/tree/main/apps/conway-soldiers-3d) 维护。** [独立发布仓库 Nanoka42/conway-soldiers-3d](https://github.com/Nanoka42/conway-soldiers-3d) 的 `main` 由维护者通过 Git subtree 从博客单向同步；该链接在首次创建并发布仓库后可用。目前没有自动同步工作流，博客更新后需由维护者手动同步独立仓库。
+
+修改代码和提交 Pull Request 请从博客仓库开始，详见[贡献说明](./CONTRIBUTING.md)。仓库所有者的首次发布、日常同步和故障处理步骤见[发布与维护手册](https://github.com/Nanoka42/nnk-blog/blob/main/docs/CONWAY_APPS_PUBLISHING_GUIDE.md)。
 
 ## 本地运行
 
-独立游戏需要 Node.js **20.11 或更新版本**，没有第三方运行依赖，不需要 `npm install`。在本目录打开 PowerShell：
+推荐安装 Node.js **24 或更新版本**，便于同时运行博客项目；本游戏单独运行的最低要求是 Node.js **20.11**。没有第三方运行依赖，不需要 `npm install`。在本目录打开 PowerShell：
 
 ```powershell
 npm run dev
@@ -25,7 +31,7 @@ npm run dev
 
 手机打开 `http://电脑的局域网IP:5318/`，端口以终端输出为准。默认仅监听本机 `127.0.0.1`。需要指定端口时，可先设置 `$env:PORT = '5319'`；这些环境变量会影响当前 PowerShell 窗口中随后启动的服务。
 
-博客根项目要求 Node.js **24 或更新版本**并安装根目录依赖；集成开发与部署见[仓库说明](../../README.md)。
+博客根项目要求 Node.js **24 或更新版本**并安装根目录依赖；集成开发与部署见[博客仓库说明](https://github.com/Nanoka42/nnk-blog/blob/main/README.md)。
 
 ## 第一次游玩
 
@@ -107,9 +113,9 @@ npm run preview
 
 `npm test` 只运行三维版本测试。`npm run build` 清空并重新生成本项目的 `dist/`，复制页面、源码与本地音效；`npm run preview` 用同一本地服务提供该目录。预览前停止占用同一端口的开发服务，或设置另一个 `PORT`。生成的静态文件无需服务端运行逻辑。
 
-博客根构建会重新生成本项目产物并集成，无需预先手动构建子项目。根目录 `npm run test:browser` 在已有根构建上运行桌面、平板、手机视口和生产预览回归；准备步骤见[仓库说明](../../README.md)。覆盖与真机测试边界见[验证记录](./docs/VALIDATION.md)。
+博客根构建会重新生成本项目产物并集成，无需预先手动构建子项目。博客根目录 `npm run test:browser` 在已有根构建上运行桌面、平板、手机视口和生产预览回归；准备步骤见[博客仓库说明](https://github.com/Nanoka42/nnk-blog/blob/main/README.md)。覆盖与真机测试边界见[验证记录](./docs/VALIDATION.md)。
 
-`dist/`、根目录 `public/play/` 和 `.generated/` 均为生成内容，不直接编辑或提交。独立运行时，说明窗口的版本链接跳到正式博客；博客集成时使用同源项目地址。
+本项目的 `dist/`、博客根目录的 `public/play/` 和 `.generated/` 均为生成内容，不直接编辑或提交。独立运行时，说明窗口的版本链接跳到正式博客；博客集成时使用同源项目地址。
 
 ## 代码结构
 

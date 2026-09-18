@@ -2,11 +2,17 @@
 
 一个直接进入无限棋盘的中文 H5 游戏。使用原生 JavaScript、Canvas 2D 和 CSS，没有第三方运行依赖，也没有后端、账号、埋点或持久化存储。所有图标和音效从本项目加载，不请求字体服务或 CDN。
 
-本项目位于博客仓库的 `apps/conway-soldiers/`，可独立运行；[三维版本](../conway-soldiers-3d/) 是并列的独立项目。博客正式入口为 [康威跳棋](https://nanoka.tv/projects/conway-soldiers/)，两个游戏的说明窗口可以互相跳转。
+本项目可独立运行；[三维版本](https://github.com/Nanoka42/nnk-blog/tree/main/apps/conway-soldiers-3d) 是并列的独立项目。博客正式入口为 [康威跳棋](https://nanoka.tv/projects/conway-soldiers/)，两个游戏的说明窗口可以互相跳转。
+
+## 源码与维护入口
+
+**源码统一在 [Nanoka42/nnk-blog 的 apps/conway-soldiers/](https://github.com/Nanoka42/nnk-blog/tree/main/apps/conway-soldiers) 维护。** [独立发布仓库 Nanoka42/conway-soldiers](https://github.com/Nanoka42/conway-soldiers) 的 `main` 由维护者通过 Git subtree 从博客单向同步；该链接在首次创建并发布仓库后可用。目前没有自动同步工作流，博客更新后需由维护者手动同步独立仓库。
+
+修改代码和提交 Pull Request 请从博客仓库开始，详见[贡献说明](./CONTRIBUTING.md)。仓库所有者的首次发布、日常同步和故障处理步骤见[发布与维护手册](https://github.com/Nanoka42/nnk-blog/blob/main/docs/CONWAY_APPS_PUBLISHING_GUIDE.md)。
 
 ## 本地运行
 
-电脑安装 Node.js 20.11 或更新版本后，在本目录运行：
+推荐安装 Node.js **24 或更新版本**，便于同时运行博客项目；本游戏单独运行的最低要求是 Node.js **20.11**。在本目录运行：
 
 ```powershell
 npm run dev
@@ -100,7 +106,7 @@ npm test
 
 `npm run build` 清空并重新生成本项目的 `dist/`，避免携带旧文件；源码本身就能作为静态网页运行。项目没有云平台 SDK、服务端路由或特定主机配置。
 
-博客的集成与部署从仓库根目录运行对应命令，具体见 [仓库说明](../../README.md)。根构建会自动重新生成本项目的 `dist/` 并集成其中的运行文件，无需预先手动构建子项目。独立运行时，说明窗口中的版本链接跳转到正式博客；博客集成后，该链接使用同源项目地址。
+博客的集成与部署从博客仓库根目录运行对应命令，具体见 [博客仓库说明](https://github.com/Nanoka42/nnk-blog/blob/main/README.md)。根构建会自动重新生成本项目的 `dist/` 并集成其中的运行文件，无需预先手动构建子项目。独立运行时，说明窗口中的版本链接跳转到正式博客；博客集成后，该链接使用同源项目地址。
 
 ## 素材署名
 

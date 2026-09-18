@@ -67,6 +67,8 @@ dist/                          最终上传到 OSS 的静态文件（生成，�
 
 `apps/` 保存独立交互作品的源码；以后新增同类作品也放在这里。`public/play/`、`.generated/`、`apps/*/dist/` 与根 `dist/` 都是构建产物，不要直接编辑或提交。目录职责和新增作品流程见[交互作品集成说明](docs/INTERACTIVE_APPS.md)。
 
+两个康威跳棋采用“博客统一维护、独立仓库单向发布”的方式：在本仓库的 `apps/` 中修改和提交代码，再用 `git subtree` 分别同步到 `Nanoka42/conway-soldiers` 与 `Nanoka42/conway-soldiers-3d`。目前同步由维护者手动执行；博客 CI 不会自动推送这两个仓库。首次建仓、发布、日常更新与排错，请按[康威跳棋发布与维护手册](docs/CONWAY_APPS_PUBLISHING_GUIDE.md)操作。
+
 ## 内容与作品
 
 - 文章位于 `src/content/posts/*.md`；文件名生成 `/posts/<文件名>/`。
@@ -105,6 +107,7 @@ Repository Variable `AUTO_DEPLOY=true` 时，`main` 的 push 会在检查通过�
 - [实现报告](docs/IMPLEMENTATION_REPORT.md)
 - [内容更新指南](docs/CONTENT_GUIDE.md)
 - [交互作品集成说明](docs/INTERACTIVE_APPS.md)
+- [康威跳棋发布与维护手册](docs/CONWAY_APPS_PUBLISHING_GUIDE.md)
 - [部署运维清单](docs/DEPLOYMENT_CHECKLIST.md)
 - [阿里云部署指南](docs/DEPLOYMENT_GUIDE.md)
 - [发布前检查记录](docs/PRELAUNCH_REVIEW.md)
