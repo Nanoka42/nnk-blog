@@ -78,7 +78,7 @@ export class Renderer {
     return targets;
   }
   pick(px, py) {
-    const c = this.camera, { board } = this.game;
+    const c = this.camera;
     if (!c.inside(px, py)) return null;
     const distance = p => Math.hypot(px - p[0], py - p[1]);
     // Explicit destinations work on both planes, including side views where
@@ -86,30 +86,10 @@ export class Renderer {
     for (const target of this.targets().reverse()) {
       if (distance(target.p) <= target.radius + 1) return target.occluded ? null : target.point;
     }
-    const point = c.hit(px, py);
-    if (!point) return null;
-    const activeDistance = distance(c.screen(...point));
-    // Visible current-plane objects win even when a hollow contextual marker
-    // happens to overlap them. Elsewhere, keep generous whole-cell tap targets.
-    if (board.has(...point) && activeDistance <= pieceRadius(c.cell) + .5) return point;
-    if (activeDistance <= gridRadius(c.cell) + 2) return point;
-    if (!c.depth) return point;
-    const b = c.bounds(), minV = b[`min${c.verticalLabel}`], maxV = b[`max${c.verticalLabel}`];
-    // Invert the pointer onto each visible neighboring plane. Since picking is disabled
-    // for strongly foreshortened planes, these nearest 3×3 sites contain every
-    // possible ghost silhouette: at most 36 candidates, even in a full world.
-    for (let offset = -c.depth; offset <= c.depth; offset++) {
-      if (offset === 0) continue;
-      const world = c.world(px, py, c.slice + offset);
-      if (!world) continue;
-      const gx = Math.round(world[0]), gv = Math.round(world[c.verticalAxis]);
-      for (let x = gx - 1; x <= gx + 1; x++) for (let v = gv - 1; v <= gv + 1; v++) {
-        if (x < b.minX || x > b.maxX || v < minV || v > maxV) continue;
-        const ghost = c.point(x, v, c.slice + offset);
-        if (distance(c.screen(...ghost)) <= ghostRadius(c.cell) + 1.5 && board.has(...ghost)) return null;
-      }
-    }
-    return point;
+    // Neighbor ghosts are visual context, never hit targets or blockers.
+    // Hover, blueprint edits and selection share the whole current-plane cell,
+    // independent of whether that cell is occupied or neighbors are displayed.
+    return c.hit(px, py);
   }
   line(a, b, color, width = 1, dash = []) {
     const ctx = this.ctx;

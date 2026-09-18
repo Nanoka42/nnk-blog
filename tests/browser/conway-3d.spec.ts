@@ -102,6 +102,48 @@ async function tapPoint(page: Page, point: Point, touch: boolean) {
   else await page.mouse.click(position.x, position.y);
 }
 
+// Aim at an occupied neighbor's visible outline, inside the current site's
+// cell but outside both its sphere and its precise grid-point hit allowance.
+// Those narrow allowances used to hide the ghost interception regression.
+async function ghostOutlineSamples(page: Page) {
+  return page.evaluate(async () => {
+    const snapshot = window.conwayTestTools.read_conway_game.execute() as Snapshot;
+    const canvas = document.querySelector<HTMLCanvasElement>('#board')!;
+    const script = document.querySelector<HTMLScriptElement>('script[type="module"][src$="/src/app.js"]')!;
+    const { Camera } = await import(new URL('./camera.js', script.src).href);
+    const { neighborStyle } = await import(new URL('./renderer.js', script.src).href);
+    const camera = new Camera();
+    camera.resize(canvas.clientWidth, canvas.clientHeight);
+    camera.setPlane(snapshot.view.plane);
+    const { slice, yaw, pitch, zoom, target } = snapshot.view;
+    Object.assign(camera, { slice, yaw, pitch, zoom, target });
+    const active = camera.point(0, 0) as Point, center = camera.screen(...active);
+    const oldExemption = Math.max(Math.min(21, Math.max(2.4, camera.cell * .224)) + .5,
+      Math.min(2.4, Math.max(1.1, camera.cell * .032)) + 2);
+    const radius = Math.min(12.5, Math.max(3.1, camera.cell * .145));
+    const box = canvas.getBoundingClientRect();
+    return [-1, 1].map(offset => {
+      const ghost = camera.point(0, 0, slice + offset) as Point, projection = camera.screen(...ghost);
+      const candidates = Array.from({ length: 64 }, (_, index) => {
+        const angle = index * Math.PI / 32;
+        const x = Math.round(box.x + projection[0] + radius * Math.cos(angle));
+        const y = Math.round(box.y + projection[1] + radius * Math.sin(angle));
+        const localX = x - box.x, localY = y - box.y;
+        const hit = camera.hit(localX, localY), world = camera.world(localX, localY);
+        const activeDistance = Math.hypot(localX - center[0], localY - center[1]);
+        const ghostDistance = Math.hypot(localX - projection[0], localY - projection[1]);
+        const fits = camera.inside(localX, localY) && hit?.every((value: number, axis: number) => value === active[axis])
+          && Math.abs(world[0] - active[0]) < .44
+          && Math.abs(world[camera.verticalAxis] - active[camera.verticalAxis]) < .44
+          && activeDistance > oldExemption + 1.5 && ghostDistance <= radius + 1.5;
+        return { x, y, activeDistance, ghostDistance, fits };
+      }).filter(sample => sample.fits).sort((a, b) => b.activeDistance - a.activeDistance);
+      if (!candidates.length) throw new Error(`No unambiguous ghost outline sample for ${snapshot.view.plane}, offset ${offset}`);
+      return { ...candidates[0], active, ghost, oldExemption, radius, far: neighborStyle(offset, camera).far as boolean };
+    });
+  });
+}
+
 test('slice orientation preserves the orbit and world center through mouse and touch navigation', async ({ page, hasTouch }, testInfo) => {
   await page.locator('#slice-value').fill('-3');
   await page.locator('#slice-value').press('Tab');
@@ -317,3 +359,83 @@ test('edge warning and its recovery button fit a narrow phone without covering t
   await activate(page, '#face-warning', hasTouch);
   await expectEdgeWarning(page, false);
 });
+
+for (const plane of ['XZ', 'XY'] as const) {
+  test(`${plane} neighboring ghosts never block current-cell editing, hover or selection`, async ({ page, hasTouch }, testInfo) => {
+    await activate(page, `#plane-${plane.toLowerCase()}`, hasTouch);
+    await activate(page, '#home', hasTouch);
+    if (plane === 'XY') {
+      // Keep both neighboring Z layers in the editable initial half-space.
+      await page.locator('#slice-value').fill('-2');
+      await page.locator('#slice-value').press('Tab');
+    }
+    const settle = () => page.evaluate(() => new Promise<void>(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await settle();
+    const samples = await ghostOutlineSamples(page);
+    expect(new Set(samples.map(sample => sample.far))).toEqual(new Set([false, true]));
+    const ghosts = samples.map(sample => sample.ghost);
+    const active = samples[0].active;
+    await page.evaluate(cells => window.conwayTestTools.toggle_blueprint_cells.execute({ cells }), ghosts);
+    const ghostKeys = ghosts.map(point => point.join(','));
+    const assertLayout = async (occupied: boolean) => {
+      const state = await read(page);
+      expect(new Set(state.differences)).toEqual(new Set(occupied ? [...ghostKeys, active.join(',')] : ghostKeys));
+      expect(state.steps).toBe(0);
+    };
+    const press = async (sample: { x: number; y: number }) => {
+      if (hasTouch) await page.touchscreen.tap(sample.x, sample.y);
+      else await page.mouse.click(sample.x, sample.y);
+    };
+
+    for (const depth of ['1', '0', '2']) {
+      await page.locator('#depth').selectOption(depth);
+      await settle();
+      for (const sample of await ghostOutlineSamples(page)) {
+        expect(sample.activeDistance).toBeGreaterThan(sample.oldExemption + 1.5);
+        expect(sample.ghostDistance).toBeLessThanOrEqual(sample.radius + 1.5);
+        if (!hasTouch && depth === '1') {
+          // With the pointer outside the canvas, no hover decoration exists.
+          // Moving onto a ghost outline must now decorate the underlying cell.
+          await page.mouse.move(0, 0);
+          await settle();
+          const before = await page.locator('#board').evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+          await page.mouse.move(sample.x, sample.y);
+          await settle();
+          const after = await page.locator('#board').evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+          expect(after).not.toBe(before);
+          await page.screenshot({ path: testInfo.outputPath(`game-3d-${plane.toLowerCase()}-ghost-${sample.far ? 'far' : 'near'}-hover.png`), fullPage: true });
+        }
+        await press(sample);
+        await assertLayout(true);
+        // The same blank part of the cell must also remove an existing piece,
+        // without changing either occupied neighboring world coordinate.
+        await press(sample);
+        await assertLayout(false);
+      }
+    }
+
+    // Seed the current piece through the same real pointer path, then verify
+    // cell-wide selection in play mode with each neighbor visibility setting.
+    await press((await ghostOutlineSamples(page))[0]);
+    await assertLayout(true);
+    await activate(page, '#primary-action', hasTouch);
+    await settle();
+    for (const depth of ['0', '1', '2']) {
+      await page.locator('#depth').selectOption(depth);
+      await settle();
+      for (const sample of await ghostOutlineSamples(page)) {
+        await press(sample);
+        expect((await read(page)).selected).toEqual(active);
+        await assertLayout(true);
+        if (depth === '1' && !sample.far) {
+          await page.screenshot({ path: testInfo.outputPath(`game-3d-${plane.toLowerCase()}-ghost-cell-selected.png`), fullPage: true });
+        }
+        // The direct piece center remains an unambiguous deselect gesture;
+        // clicking the outline again could intentionally hit a jump handle.
+        await tapPoint(page, active, hasTouch);
+        expect((await read(page)).selected).toBeNull();
+      }
+    }
+  });
+}

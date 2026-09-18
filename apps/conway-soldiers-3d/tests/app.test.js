@@ -289,23 +289,74 @@ test('hidden-layer edits survive slice / depth changes; Y jump follows landing a
   assert.equal(h.snapshot().pieces, 3);
 });
 
-test('tapping a hollow neighbor marker cannot edit or select an unrelated point on the active plane', async () => {
-  const h = await setup();
-  await h.execute('toggle_blueprint_cells', { cells: [[0, 1, 0]] });
-  h.tap([0, 1, 0]);
-  assert.deepEqual(h.snapshot().differences, ['0,1,0']);
-  h.tap([0, 0, 0]);
-  assert.equal(h.snapshot().pieces, 2);
-  h.click('primary-action');
-  h.tap([0, 1, 0]);
-  assert.equal(h.snapshot().selected, null);
-  h.tap([0, 0, 0]);
-  assert.deepEqual(h.snapshot().selected, [0, 0, 0]);
-  assert.equal(h.$('jump-yp').disabled, false);
-  h.click('jump-yp');
-  assert.equal(h.snapshot().view.slice, 2);
-  assert.deepEqual(h.snapshot().differences, ['0,2,0']);
-});
+for (const plane of ['XZ', 'XY']) for (const pointerType of ['mouse', 'touch']) {
+  test(`${plane} ${pointerType} can place, remove and select through near/far neighbor references at every display depth`, async () => {
+    for (const side of [-1, 1]) for (const offset of [-2, -1, 1, 2]) {
+      const h = await setup();
+      h.click(plane === 'XY' ? 'plane-xy' : 'plane-xz'); h.locate(0, 0, -2);
+      const yaw = plane === 'XY' || side > 0 ? .43 : Math.PI - .43;
+      const pitch = plane === 'XY' ? side * 1.1 : .27;
+      const previous = h.snapshot().view, start = [400, 300];
+      const end = [start[0] + (yaw - previous.yaw) / .006, start[1] + (pitch - previous.pitch) / .0045];
+      const orbit = { pointerType: 'mouse', button: 2 };
+      h.dispatchPointer('pointerdown', 9001, start, orbit);
+      h.dispatchPointer('pointermove', 9001, end, orbit);
+      h.dispatchPointer('pointerup', 9001, end, orbit);
+      assert.equal(h.snapshot().view.pickable, true);
+      const ghost = plane === 'XY' ? [0, 0, -2 + offset] : [0, offset, -2];
+      // Known cell under the projected hollow marker. Derive expectations from
+      // this fixture's geometry, not by asking the picking implementation.
+      const active = plane === 'XY'
+        ? [0, Math.abs(offset) === 2 ? -Math.sign(offset) * side : 0, -2]
+        : [Math.abs(offset) === 2 ? -Math.sign(offset) * side : 0, 0,
+          -2 - (Math.abs(offset) === 2 ? Math.sign(offset) * side : 0)];
+      const other = [active[0] + 3, active[1], active[2]], empty = [active[0] + 5, active[1], active[2]];
+      await h.execute('toggle_blueprint_cells', { cells: [ghost, other] });
+      const pixel = h.screen(ghost), baseline = [ghost.join(','), other.join(',')].sort();
+      const tapMarker = () => {
+        h.dispatchPointer('pointerdown', 9002, pixel, { pointerType });
+        h.dispatchPointer('pointerup', 9002, pixel, { pointerType });
+      };
+      const checkMouseHover = () => {
+        if (pointerType !== 'mouse') return;
+        let path = []; const outlines = [];
+        context.beginPath = () => { path = []; };
+        context.moveTo = context.lineTo = (x, y) => path.push([x, y]);
+        context.stroke = () => { if (context.strokeStyle === '#b1e7db85') outlines.push([...path]); };
+        try {
+          h.dispatchPointer('pointermove', 9003, pixel, { pointerType });
+        } finally {
+          for (const method of ['beginPath', 'moveTo', 'lineTo', 'stroke']) delete context[method];
+        }
+        assert.equal(outlines.length, 1, 'the marker area still shows a current-cell hover outline');
+        const expected = h.screen(active);
+        for (const axis of [0, 1]) {
+          const coordinates = outlines[0].map(point => point[axis]);
+          const center = (Math.min(...coordinates) + Math.max(...coordinates)) / 2;
+          assert.ok(Math.abs(center - expected[axis]) < 1e-7, 'hover and click resolve to the same current-plane cell');
+        }
+      };
+      for (const depth of [0, 1, 2]) {
+        h.input('depth', depth); checkMouseHover(); tapMarker();
+        assert.deepEqual([...h.snapshot().differences].sort(), [...baseline, active.join(',')].sort(), 'marker area places on the current slice');
+        tapMarker();
+        assert.deepEqual([...h.snapshot().differences].sort(), baseline, 'the same pixel removes that piece without changing its neighbor');
+      }
+      tapMarker(); h.click('primary-action');
+      const board = [...h.snapshot().differences].sort();
+      for (const depth of [0, 1, 2]) {
+        h.input('depth', depth); checkMouseHover(); tapMarker();
+        assert.deepEqual(h.snapshot().selected, active, 'marker area selects the current-slice piece');
+        tapMarker(); assert.equal(h.snapshot().selected, null, 'same pixel cancels selection');
+        h.tap(other); assert.deepEqual(h.snapshot().selected, other);
+        tapMarker(); assert.deepEqual(h.snapshot().selected, active, 'marker area can replace another selection');
+        h.tap(empty); assert.equal(h.snapshot().selected, null);
+        assert.equal(h.snapshot().steps, 0);
+        assert.deepEqual([...h.snapshot().differences].sort(), board, 'selection never changes either slice');
+      }
+    }
+  });
+}
 
 test('infinite fill / clear confirmations preserve holes across all slices and restart restores baseline', async () => {
   const h = await setup();

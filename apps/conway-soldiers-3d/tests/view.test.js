@@ -165,26 +165,25 @@ const pickerSetup = (pieces = [], selected = null) => {
   return { camera, board, renderer };
 };
 
-test('clicking a hollow neighbour never edits the current-plane cell under it', () => {
-  const { camera: c, renderer } = pickerSetup([[0, 1, 0]]);
+test('hollow neighbor references allow touch edits only on the current plane', () => {
+  const { camera: c, renderer, board } = pickerSetup([[0, 1, 0]]);
   const ghost = c.screen(0, 1, 0);
-  assert.deepEqual(c.hit(...ghost), [0, 0, 0]);
-  assert.equal(renderer.pick(...ghost), null);
-  const taps = [], gesture = new BoardGesture(c, { pick: (x, y) => renderer.pick(x, y), tap: (...p) => taps.push(p) });
+  const gesture = new BoardGesture(c, { pick: (x, y) => renderer.pick(x, y), tap: (...p) => board.toggle(...p) });
   gesture.down(1, ghost[0], ghost[1], 'touch'); gesture.up(1, ghost[0], ghost[1]);
-  assert.equal(taps.length, 0);
+  assert.equal(board.has(0, 0, 0), true); assert.equal(board.has(0, 1, 0), true);
   c.depth = 0;
-  assert.deepEqual(renderer.pick(...ghost), [0, 0, 0]);
+  gesture.down(2, ghost[0], ghost[1], 'touch'); gesture.up(2, ghost[0], ghost[1]);
+  assert.equal(board.has(0, 0, 0), false); assert.equal(board.has(0, 1, 0), true);
 });
 
-test('active sphere silhouettes and explicit grid dots win over overlapping ghosts', () => {
+test('occupied and empty current-plane cells remain clickable where ghost silhouettes overlap', () => {
   const { camera: c, renderer, board } = pickerSetup([[0, 0, 0], [0, 1, 0]]);
   c.yaw = .24; c.pitch = 0;
   const p = c.screen(0, 0, 0), pointer = [p[0] - c.cell * .15, p[1]], ghost = c.screen(0, 1, 0);
   assert.ok(Math.hypot(pointer[0] - ghost[0], pointer[1] - ghost[1]) < c.cell * .145);
   assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
   board.toggle(0, 0, 0);
-  assert.equal(renderer.pick(...pointer), null);
+  assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
   c.yaw = .08;
   assert.deepEqual(renderer.pick(...c.screen(0, 0, 0)), [0, 0, 0]);
 });
@@ -195,7 +194,7 @@ test('same-plane legal target remains clickable through a hollow neighbouring pi
   const p = c.screen(0, 0, 0), pointer = [p[0] - c.cell * .2, p[1]];
   assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
   renderer.game.selected = null;
-  assert.equal(renderer.pick(...pointer), null);
+  assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
 });
 
 test('cross-Y destination circles jump directly instead of operating underlying active cells', () => {
@@ -237,7 +236,7 @@ test('newly editable shallow views keep sphere silhouettes and mouse/touch picks
   }
 });
 
-test('newly editable shallow views still suppress neighboring ghost hits', () => {
+test('shallow views keep neighboring references transparent to current-plane picks', () => {
   for (const plane of ['XZ', 'XY']) for (const sign of [-1, 1]) for (const offset of [-2, -1, 1, 2]) {
     const { camera: c, renderer, board } = pickerSetup();
     c.setPlane(plane); c.slice = 0; c.center = [0, 0]; c.depth = 2;
@@ -246,9 +245,11 @@ test('newly editable shallow views still suppress neighboring ghost hits', () =>
     const point = c.point(0, 0, offset); board.toggle(...point);
     const ghost = c.screen(...point), candidate = c.hit(...ghost);
     assert.equal(c.pickable, true); assert.notEqual(candidate, null);
-    assert.equal(renderer.pick(...ghost), null);
-    c.depth = 0;
-    assert.deepEqual(renderer.pick(...ghost), candidate);
+    assert.notDeepEqual(candidate, point);
+    for (const depth of [0, 1, 2]) {
+      c.depth = depth;
+      assert.deepEqual(renderer.pick(...ghost), candidate);
+    }
   }
 });
 
@@ -408,13 +409,13 @@ test('selection rendering includes all six world-axis labels and gray dashed cov
   }
 });
 
-test('ghost suppression follows displayed depth and retains generous empty-cell taps', () => {
+test('neighbor display depth does not reduce empty-cell tap areas or bypass window and side-view limits', () => {
   const { camera: c, renderer } = pickerSetup([[1, 2, 0]]);
   const ghost = c.screen(1, 2, 0), candidate = c.hit(...ghost);
   assert.notEqual(candidate, null);
   assert.deepEqual(renderer.pick(...ghost), candidate);
   c.depth = 2;
-  assert.equal(renderer.pick(...ghost), null);
+  assert.deepEqual(renderer.pick(...ghost), candidate);
   const empty = c.screen(3, 0, 0), pointer = [empty[0] + c.cell * .3, empty[1]];
   assert.deepEqual(renderer.pick(...pointer), [3, 0, 0]);
   assert.equal(renderer.pick(1, 1), null);
@@ -442,26 +443,14 @@ for (const plane of ['XZ', 'XY']) test(`${plane} rendering visits at most 31 × 
   assert.equal(canvas.style.width, '100%');
 });
 
-test('XY neighbor silhouettes never edit their projected current-plane cells, from either side', () => {
-  for (const pitch of [-1.2, -.85, .85, 1.2]) for (const yaw of [0, .43, Math.PI]) for (const offset of [-2, -1, 1, 2]) {
-    const { camera: c, renderer } = pickerSetup([[0, 0, offset]]);
-    c.setPlane('XY'); c.slice = 0; c.center = [0, 0]; c.pitch = pitch; c.yaw = yaw; c.depth = 2;
-    const ghost = c.screen(0, 0, offset), candidate = c.hit(...ghost);
-    assert.notEqual(candidate, null);
-    assert.equal(renderer.pick(...ghost), null, `pitch ${pitch}, yaw ${yaw}, offset ${offset}`);
-    c.depth = 0;
-    assert.deepEqual(renderer.pick(...ghost), candidate);
-  }
-});
-
-test('XY active pieces and exact grid dots retain priority over neighboring Z silhouettes', () => {
+test('XY occupied and empty cells stay clickable through neighboring Z silhouettes', () => {
   const { camera: c, renderer, board } = pickerSetup([[0, 0, 0], [0, 0, -1]]);
   c.setPlane('XY'); c.slice = 0; c.center = [0, 0]; c.yaw = 0; c.pitch = -Math.PI / 2 + .24;
   const p = c.screen(0, 0, 0), pointer = [p[0], p[1] + c.cell * .15], ghost = c.screen(0, 0, -1);
   assert.ok(Math.hypot(pointer[0] - ghost[0], pointer[1] - ghost[1]) < c.cell * .145);
   assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
   board.toggle(0, 0, 0);
-  assert.equal(renderer.pick(...pointer), null);
+  assert.deepEqual(renderer.pick(...pointer), [0, 0, 0]);
   c.pitch = -Math.PI / 2 + .08;
   assert.deepEqual(renderer.pick(...c.screen(0, 0, 0)), [0, 0, 0]);
 });
