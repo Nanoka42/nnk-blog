@@ -1,0 +1,17 @@
+---
+const timestamp = __BUILD_TIMESTAMP__;
+const date = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+}).format(new Date(timestamp));
+---
+<span class="build-time">网站最近更新：<time datetime={timestamp}>{date}（北京时间）</time></span>
+<style>
+  .build-time { display: block; font-size: .75rem; line-height: 1.6; margin-top: .2rem; }
+</style>

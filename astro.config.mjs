@@ -7,6 +7,9 @@ import { remarkMathSource, rehypeReading } from './src/plugins/markdown.mjs';
 import { siteUrl } from './config/site.mjs';
 import { isRedirectPath } from './config/redirects.mjs';
 
+// Capture one timestamp for every page in this static build.
+const buildTimestamp = new Date().toISOString();
+
 export const markdown = {
   processor: unified({
     gfm: true,
@@ -36,7 +39,10 @@ export default defineConfig({
   // Port 0 lets the OS choose an available port, including on Windows with reserved ranges.
   server: { host: '127.0.0.1', port: 0 },
   build: { format: 'directory' },
-  vite: { server: { watch: { ignored: ['**/apps/**', '**/public/play/**', '**/.generated/**'] } } },
+  vite: {
+    define: { __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp) },
+    server: { watch: { ignored: ['**/apps/**', '**/public/play/**', '**/.generated/**'] } },
+  },
   integrations: [sitemap({
     filter: (page) => !['/404/', '/404.html'].includes(new URL(page).pathname) && !isRedirectPath(new URL(page).pathname),
   })],

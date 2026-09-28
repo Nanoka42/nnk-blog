@@ -1,6 +1,7 @@
 ---
 import { profile } from '../config';
 import Registration from '../components/Registration.astro';
+import BuildTime from '../components/BuildTime.astro';
 import { isLocalSite } from '../../config/site.mjs';
 import '../styles/global.css';
 interface Props {
@@ -62,7 +63,7 @@ const nav = [['/', '首页'], ['/posts/', '文章'], ['/projects/', '交互作�
     </header>
     <main id="main" class="wrap" tabindex="-1"><slot /></main>
     <footer class="site-footer wrap">
-      <p>© {new Date().getUTCFullYear()} {profile.name}<span class="footer-note">真理院七叶 nanoka42@qq.com</span></p>
+      <p>© {new Date().getUTCFullYear()} {profile.name}<span class="footer-note">真理院七叶 nanoka42@qq.com</span><BuildTime /></p>
       <div><a href={profile.github} target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href={profile.bilibili} target="_blank" rel="noopener noreferrer">Bilibili ↗</a><a href="/rss.xml">RSS</a></div>
       <Registration />
     </footer>

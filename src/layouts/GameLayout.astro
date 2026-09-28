@@ -1,6 +1,7 @@
 ---
 import { load } from 'cheerio';
 import Registration from '../components/Registration.astro';
+import BuildTime from '../components/BuildTime.astro';
 import { isLocalSite } from '../../config/site.mjs';
 import { games } from '../../config/games.mjs';
 import { profile, projects } from '../config';
@@ -51,6 +52,7 @@ const canonical = new URL(game.pagePath, Astro.site);
     <footer class="game-site-footer">
       <a class="game-back-link" href="/projects/" aria-label="返回交互作品列表">← 作品</a>
       <Registration />
+      <BuildTime />
     </footer>
   </body>
 </html>
@@ -62,6 +64,7 @@ const canonical = new URL(game.pagePath, Astro.site);
   .game-back-link { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 6px; color: inherit; font-size: .75rem; line-height: 1.6; text-decoration: none; }
   .game-back-link:hover { text-decoration: underline; }
   .game-back-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  .game-site-footer .build-time { text-align: center; }
   .credits a { color: var(--mint, var(--green)); text-underline-offset: .2em; }
   @media (max-width: 760px) {
     /* Keep the footer after the game's intrinsic height, including controls

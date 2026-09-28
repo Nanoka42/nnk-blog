@@ -18,6 +18,7 @@ for (const file of required) assert.ok((await stat(join(output, file))).isFile()
 const files = await readdir(output, { recursive: true });
 assert.ok(!files.some((file) => /markdown-regression|regression-only|conway-notes/.test(file)), 'draft or removed route leaked');
 let references = 0;
+const buildTimes = new Set();
 for (const file of files.filter((file) => /\.(html|xml)$/.test(file))) {
   const html = await readFile(join(output, file), 'utf8');
   assert.ok(!html.includes('Markdown 排版与交互回归测试'), `draft content leaked into ${file}`);
@@ -30,6 +31,15 @@ for (const file of files.filter((file) => /\.(html|xml)$/.test(file))) {
   const route = '/' + file.replaceAll('\\', '/').replace(/index\.html$/, '');
   assert.ok($('title').text().trim(), `${file}: title`);
   const redirectTarget = redirects[route];
+  if (!redirectTarget) {
+    const buildTime = $('footer .build-time time');
+    assert.equal(buildTime.length, 1, `${file}: build time missing or duplicated`);
+    const timestamp = buildTime.attr('datetime');
+    assert.match(timestamp, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, `${file}: invalid build timestamp`);
+    buildTimes.add(timestamp);
+    const beijing = new Date(Date.parse(timestamp) + 8 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+    assert.equal(buildTime.text(), `${beijing}（北京时间）`, `${file}: build time display`);
+  }
   assert.equal($('link[rel=canonical]').attr('href'), new URL(redirectTarget || route, siteUrl).href, `${file}: canonical`);
   assert.ok($('meta[name=description]').length, `${file}: description`);
   const registration = $('.registration a').filter((_, node) => $(node).text() === icpRegistration.number);
@@ -67,6 +77,7 @@ for (const file of files.filter((file) => /\.(html|xml)$/.test(file))) {
     references++;
   }
 }
+assert.equal(buildTimes.size, 1, 'All published pages must show the same build time');
 const sitemap = load(await readFile(join(output, 'sitemap-0.xml'), 'utf8'), { xmlMode: true });
 const listed = sitemap('loc').toArray().map((node) => new URL(sitemap(node).text()).pathname);
 for (const path of gamePaths) assert.ok(listed.includes(path), `${path}: game must be discoverable`);
