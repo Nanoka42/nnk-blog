@@ -7,7 +7,10 @@ export const icpRegistration = {
   url: 'https://beian.miit.gov.cn/',
 };
 
-// Fill in only AFTER public-security registration has been approved. Use the
-// number, verification URL and local icon path supplied by the official portal.
-/** @type {{ number: string; url: string; icon: string } | null} */
-export const publicSecurityRegistration = null;
+// Record and verification URL supplied by the site owner (2026-10-22).
+// Registration.astro imports the official icon from assets/备案图标.png.
+/** @type {{ number: string; url: string } | null} */
+export const publicSecurityRegistration = {
+  number: '粤公网安备44090202001410号',
+  url: 'https://beian.mps.gov.cn/#/query/webSearch?code=44090202001410',
+};

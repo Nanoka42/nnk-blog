@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { load } from 'cheerio';
 import { siteUrl, isLocalSite } from '../config/site.mjs';
 import { redirects, conwayPath, conway3dPath } from '../config/redirects.mjs';
-import { icpRegistration } from '../config/registration.mjs';
+import { icpRegistration, publicSecurityRegistration } from '../config/registration.mjs';
 
 const output = fileURLToPath(new URL('../dist/', import.meta.url));
 const gamePaths = [conwayPath, conway3dPath];
@@ -44,6 +44,16 @@ for (const file of files.filter((file) => /\.(html|xml)$/.test(file))) {
   assert.ok($('meta[name=description]').length, `${file}: description`);
   const registration = $('.registration a').filter((_, node) => $(node).text() === icpRegistration.number);
   assert.equal(registration.attr('href'), icpRegistration.url, `${file}: ICP registration`);
+  if (publicSecurityRegistration) {
+    const policeRegistration = $('.registration a').filter((_, node) => $(node).text() === publicSecurityRegistration.number);
+    assert.equal(policeRegistration.length, 1, `${file}: public-security registration missing or duplicated`);
+    assert.equal(policeRegistration.attr('href'), publicSecurityRegistration.url, `${file}: public-security verification URL`);
+    assert.equal(policeRegistration.attr('target'), '_blank', `${file}: public-security link target`);
+    for (const value of ['noopener', 'noreferrer']) assert.ok(policeRegistration.attr('rel')?.split(/\s+/).includes(value), `${file}: public-security link ${value}`);
+    const icon = policeRegistration.children().first();
+    assert.ok(icon.is('img') && icon.attr('src'), `${file}: public-security icon must precede the number`);
+    assert.equal(icon.attr('alt'), '', `${file}: public-security icon is decorative`);
+  }
   const noindex = $('meta[name=robots]').attr('content')?.includes('noindex') || false;
   assert.equal(noindex, isLocalSite || Boolean(redirectTarget) || route === '/404.html', `${file}: indexing policy`);
   if (redirectTarget) assert.equal($('meta[http-equiv=refresh]').attr('content'), `0;url=${redirectTarget}`, `${file}: redirect destination`);
@@ -95,4 +105,4 @@ for (const file of ['rss.xml', 'sitemap-index.xml', 'sitemap-0.xml']) {
 }
 const robots = await readFile(join(output, 'robots.txt'), 'utf8');
 assert.ok(robots.includes(isLocalSite ? 'Disallow: /' : 'Allow: /'), 'robots origin policy');
-console.log(`Production verified: ${required.length} required artifacts, ${references} local references, redirects, ICP, indexing, draft exclusion, Markdown features.`);
+console.log(`Production verified: ${required.length} required artifacts, ${references} local references, redirects, ICP/public-security registration, indexing, draft exclusion, Markdown features.`);

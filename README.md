@@ -100,7 +100,7 @@ Repository Variable `AUTO_DEPLOY=true` 时，`main` 的 push 会在检查通过�
 
 生产域名为 **`nanoka.tv`**，通过 `SITE_URL=https://nanoka.tv` 集中配置。未设置时，普通 `npm run build` 仍可用于本地检查，并输出禁止索引标记。本地正式构建可从 `.env.example` 创建 `.env`；CI 使用 Repository Variable `SITE_URL` 或工作流中的生产默认值。`npm run build:release` 会拒绝缺失或无效的生产域名配置。
 
-`config/registration.mjs` 保留完整网站备案号 **粤ICP备2026138999号-1**；按广东规则，页脚展示主体备案号 **粤ICP备2026138999号**，并链接工信部备案系统。公安备案尚未完成，获批后再填入真实的备案号、查询链接和图标；办理步骤与上线检查见部署指南。
+`config/registration.mjs` 保留完整网站备案号 **粤ICP备2026138999号-1**；按广东规则，页脚展示主体备案号 **粤ICP备2026138999号**，并链接工信部备案系统。2026-10-22 已依据用户提供的信息，在本地配置[粤公网安备44090202001410号](https://beian.mps.gov.cn/#/query/webSearch?code=44090202001410)；共用备案组件通过 Astro 导入 `assets/备案图标.png`，按 18×20 像素显示，图标在前、编号在右。本次未部署，线上展示待发布后验收，具体检查见部署指南。
 
 发布链路：GitHub → GitHub Actions → 阿里云 OSS → CDN → 读者；AliDNS 将 `nanoka.tv` 指向 CDN。部署采用 GitHub OIDC / RAM Role / STS 临时凭证，不存储长期 AccessKey。2026-09-17 已完成源站与 CDN 发布验收。
 

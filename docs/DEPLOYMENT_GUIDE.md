@@ -171,9 +171,9 @@ curl.exe -sS -D - -o NUL https://nanoka.tv/play/conway-soldiers-3d/src/app.js
 
 ### 备案与上线内容
 
-`config/registration.mjs` 统一保存主体号、完整网站号及未来公安备案配置；博客底部中央和游戏页的可见底栏使用同一个备案组件。广东悬挂主体号的依据见[阿里云广东备案规则](https://help.aliyun.com/zh/icp-filing/icp-filing-regulations-for-guangdong)。
+`config/registration.mjs` 统一保存主体号、完整网站号及公安备案编号和查询链接；博客底部中央、游戏页的可见底栏及短链跳转页使用同一个备案组件。广东悬挂主体号的依据见[阿里云广东备案规则](https://help.aliyun.com/zh/icp-filing/icp-filing-regulations-for-guangdong)。
 
-网站实际开通之日起 **30 日内**向属地公安提交联网备案申请，时间起点不是 ICP 审核通过日。获批后从[全国互联网安全管理服务平台](https://beian.mps.gov.cn/)取得编号、查询链接及官方图标，将图标放入 `public/`，填写 `publicSecurityRegistration` 后重建发布。当前保持 `null`，页面不显示任何虚构公安备案状态。[深圳公安办理时限说明](https://ga.sz.gov.cn/ZT/HLWSYSQ/CJWT/content/post_11490792.html)
+2026-10-22 已依据用户提供的公安备案信息完成本地配置：[粤公网安备44090202001410号](https://beian.mps.gov.cn/#/query/webSearch?code=44090202001410)。`src/components/Registration.astro` 直接通过 Astro 导入已有的 `assets/备案图标.png`，按原图 36×40 的比例显示为 18×20 像素，图标在前、编号在右，整体链接至官方查询页。无需另行复制图标到 `public/`。本次未部署；发布后应检查首页、两游戏页和短链跳转页的编号、图标加载、查询链接及手机布局，并保存展示记录。本次记录日期不代表备案批准日期。
 
 更完整的备案范围、交互式科普游戏适用边界、访问日志和素材授权检查，以及可直接使用的主管部门咨询说明，见 [发布前检查记录](PRELAUNCH_REVIEW.md)。ICP备案和前端检查通过不能代替云端配置验收或其他业务许可判断。
 
