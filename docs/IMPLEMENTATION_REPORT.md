@@ -8,7 +8,7 @@
 
 实现了首页、文章列表/详情、标签、作品列表、康威跳棋、关于页和 `404.html`，以及 RSS、sitemap、robots、canonical、基础 Open Graph。康威跳棋现在直接在 `/projects/conway-soldiers/` 显示棋盘，不再设置单独的作品介绍中间页。设计采用头像中的紫色与浅黄点缀，静态图片经过 Astro 优化；原 PNG/GIF、封面与 H5 源文件均保留。
 
-依赖以 `package-lock.json` 锁定，根要求 Node.js 24。主要依赖职责如下，具体版本以 `package.json` 与 lockfile 为准：
+依赖以 `package-lock.json` 锁定，根项目当前要求 Node.js 24.22.1 或更新版本，推荐沿用 24.x LTS；本地推荐版本与 CI 由 `.nvmrc` 固定为 24.22.1。主要依赖职责如下，具体版本以 `package.json` 与 lockfile 为准：
 
 - Astro 与 TypeScript：静态站点和类型检查。
 - `@astrojs/markdown-remark` 的 unified processor、`remark-math`、KaTeX、`rehype-slug`：Markdown、数学和标题锚点。

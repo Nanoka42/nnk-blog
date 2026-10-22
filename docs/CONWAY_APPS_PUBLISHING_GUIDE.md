@@ -69,7 +69,7 @@
 Windows 开始菜单搜索 **Git Bash** 并打开，进入博客根目录：
 
 ```bash
-cd "/j/NANOKA/N Blog/nnk_blog"
+cd "/n/N Blog/nnk_blog"
 pwd
 git rev-parse --show-toplevel
 git branch --show-current
@@ -78,7 +78,7 @@ git remote -v
 
 检查：
 
-- 当前目录和仓库根目录都指向 `J:/NANOKA/N Blog/nnk_blog`；路径中的空格要求保留引号。
+- 当前目录和仓库根目录都指向 `N:/N Blog/nnk_blog`；路径中的空格要求保留引号。
 - 当前分支是 `main`。若你在另一个开发分支，先用自己的正常流程合并到 main，再发布。
 - origin 指向 `Nanoka42/nnk-blog.git`，不是某个 app 仓库。
 
@@ -99,7 +99,7 @@ npm --version
 git subtree -h
 ```
 
-博客使用 Node.js 24 或更新版本；建议开发和 CI 都沿用 Node 24。两个 app 自身没有第三方 npm 依赖。
+博客要求 Node.js 24.22.1 或更新版本，推荐沿用 24.x LTS；本地推荐版本与 CI 均由根目录 `.nvmrc` 固定为 24.22.1。两个 app 自身没有第三方 npm 依赖。
 
 正常的 `git subtree -h` 会显示 `add / split / push` 等帮助。帮助命令可能以非零状态退出，只要正常显示 usage，不应单凭退出码判断安装损坏。
 
@@ -196,7 +196,7 @@ git push origin main
 回到 Git Bash：
 
 ```bash
-cd "/j/NANOKA/N Blog/nnk_blog"
+cd "/n/N Blog/nnk_blog"
 git status --short
 git branch --show-current
 git fetch origin
@@ -277,7 +277,7 @@ git subtree push --prefix=apps/conway-soldiers-3d git@github-nanoka:Nanoka42/con
 在博客目录外放两个临时验证副本，避免在博客内嵌套新仓库。下面名称如果已经存在，换一个新的目录名，不要删除已有目录来腾位置。
 
 ```bash
-cd "/j/NANOKA/N Blog"
+cd "/n/N Blog"
 git clone https://github.com/Nanoka42/conway-soldiers.git conway-soldiers-check
 cd conway-soldiers-check
 npm test
@@ -288,7 +288,7 @@ npm run preview
 浏览器打开终端打印的地址，检查棋盘可以加载、操作、播放音效。按 `Ctrl+C` 停止预览后，验证另一个：
 
 ```bash
-cd "/j/NANOKA/N Blog"
+cd "/n/N Blog"
 git clone https://github.com/Nanoka42/conway-soldiers-3d.git conway-soldiers-3d-check
 cd conway-soldiers-3d-check
 npm test

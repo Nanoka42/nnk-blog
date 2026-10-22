@@ -14,7 +14,7 @@
 
 ## 本地运行
 
-推荐安装 Node.js **24 或更新版本**，便于同时运行博客项目；本游戏单独运行的最低要求是 Node.js **20.11**。没有第三方运行依赖，不需要 `npm install`。在本目录打开 PowerShell：
+推荐安装 Node.js **24.22.1**（与博客根目录 `.nvmrc` 和 CI 一致），便于同时运行博客项目；本游戏单独运行的最低要求是 Node.js **20.11**。没有第三方运行依赖，不需要 `npm install`。在本目录打开 PowerShell：
 
 ```powershell
 npm run dev
@@ -31,7 +31,7 @@ npm run dev
 
 手机打开 `http://电脑的局域网IP:5318/`，端口以终端输出为准。默认仅监听本机 `127.0.0.1`。需要指定端口时，可先设置 `$env:PORT = '5319'`；这些环境变量会影响当前 PowerShell 窗口中随后启动的服务。
 
-博客根项目要求 Node.js **24 或更新版本**并安装根目录依赖；集成开发与部署见[博客仓库说明](https://github.com/Nanoka42/nnk-blog/blob/main/README.md)。
+博客根项目要求 Node.js **24.22.1 或更新版本**并安装根目录依赖，推荐沿用 **24.x LTS**，当前使用 `.nvmrc` 指定的 24.22.1。集成开发与部署见[博客仓库说明](https://github.com/Nanoka42/nnk-blog/blob/main/README.md)。
 
 ## 第一次游玩
 

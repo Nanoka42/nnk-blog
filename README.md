@@ -8,7 +8,9 @@
 
 ## 本地使用
 
-要求：Node.js **24 LTS**、npm。依赖版本和 lockfile 已锁定，不需要全局安装 Astro。
+要求：Node.js **24.22.1 或更新版本**、npm，推荐沿用 **24.x LTS**。`.nvmrc` 固定当前项目版本 **24.22.1**，GitHub Actions 的验证和部署任务均读取此文件；`package.json` 声明最低版本。普通 Windows 安装不会自动读取 `.nvmrc`，仍需安装对应 Node.js 并重新打开终端。依赖版本和 lockfile 已锁定，不需要全局安装 Astro。
+
+2026-10-22 的目录迁移检查、Windows Node.js 升级和 GitHub 后续操作步骤见[迁移与升级记录](docs/MIGRATION_AND_NODE_UPGRADE.md)。
 
 ```bash
 npm ci

@@ -88,7 +88,7 @@ Astro 负责组织这种从源码到网页的转换。本项目在 astro.config.
 
 JavaScript 不仅能在浏览器中运行，也能通过 Node.js 在电脑上运行。
 
-Astro、项目里的构建脚本以及不少检查工具，都需要 Node.js。这个项目要求 Node.js 24 或以上，当前 CI 使用 24，本地也建议使用同一主版本。
+Astro、项目里的构建脚本以及不少检查工具，都需要 Node.js。这个项目要求 Node.js 24.22.1 或更新版本，推荐沿用 24.x LTS；当前本地推荐版本与 CI 均固定为 24.22.1，版本记录在根目录 `.nvmrc`。
 
 对当前部署方案来说，Node.js 是“制作网站成品时的工具”。读者无需安装它，OSS 也无需替你长期运行它。
 
@@ -207,7 +207,7 @@ GitHub 是保存代码和版本历史的平台；GitHub Actions 是它提供的�
 | 实际步骤 | 它在做什么 |
 | --- | --- |
 | actions/checkout | 把这次提交的仓库代码取到 runner 上 |
-| actions/setup-node | 准备 Node.js 24 与 npm |
+| actions/setup-node | 按 `.nvmrc` 准备 Node.js 24.22.1 与 npm |
 | npm ci | 按锁文件安装构建需要的依赖 |
 | npm run check | 检查 Astro、TypeScript 和文章数据 |
 | npm test | 测试内容处理、配置工具与游戏逻辑 |
@@ -270,7 +270,7 @@ flowchart TD
 在你的电脑上执行构建后，文件位于：
 
 ```text
-J:\NANOKA\N Blog\nnk_blog\dist\
+N:\N Blog\nnk_blog\dist\
 ```
 
 这些是真实存在于你硬盘上的文件。修改源码后，它们不会自动因为 git push 而更新；要重新运行构建。
@@ -350,7 +350,7 @@ GitHub 的 artifact 功能就是用于保存与传递工作流生成的文件；
 下面是需要时手动执行的示例，不必每次写作都执行完整流程。按顺序逐条执行；如果某条命令报错，先解决它，再继续下一条：
 
 ```powershell
-Set-Location -LiteralPath 'J:\NANOKA\N Blog\nnk_blog'
+Set-Location -LiteralPath 'N:\N Blog\nnk_blog'
 
 npm ci
 

@@ -26,10 +26,10 @@ jobs:
       ASTRO_TELEMETRY_DISABLED: '1'
       SITE_URL: ${{ vars.SITE_URL || 'https://nanoka.tv' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run check
@@ -38,7 +38,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - name: Save deployable static files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ github.sha }}
           path: dist/
@@ -46,7 +46,7 @@ jobs:
           retention-days: 14
       - name: Save browser diagnostics if checks fail
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-diagnostics
           path: test-results/
@@ -75,12 +75,12 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
 
       # AUTO_DEPLOY must be a repository variable: environment variables are
       # unavailable when GitHub evaluates the job-level condition above.
@@ -96,7 +96,7 @@ jobs:
           fi
 
       - name: Download validated artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-${{ github.sha }}
           path: dist
@@ -118,7 +118,7 @@ jobs:
           echo "Prepared checksums for $(wc -l < deployment-sha256.txt) files."
 
       - name: Save deployment manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-manifest-${{ github.sha }}-${{ github.run_attempt }}
           path: deployment-sha256.txt
@@ -177,7 +177,7 @@ jobs:
 
       - name: Save sanitized OSS upload diagnostics
         if: ${{ failure() && steps.upload.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: oss-upload-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/oss-deploy/

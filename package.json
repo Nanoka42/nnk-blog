@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=24.22.1"
   },
   "scripts": {
     "dev": "node scripts/prepare-games.mjs && astro dev --host 127.0.0.1",
